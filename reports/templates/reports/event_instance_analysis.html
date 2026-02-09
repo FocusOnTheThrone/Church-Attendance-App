@@ -1,0 +1,275 @@
+{% extends "base.html" %}
+
+{% block title %}Attendance Analysis: {{ instance_display_name }} - Church{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{% url 'events' %}">Events</a></li>
+                <li class="breadcrumb-item"><a href="{% url 'event_instances' service_type=service_type %}">{{ service_type_label }}</a></li>
+                <li class="breadcrumb-item active">Analysis</li>
+            </ol>
+        </nav>
+        <h1 class="h3">Attendance Analysis: {{ instance_display_name }}</h1>
+        <p class="text-muted mb-0">Analysis for this instance and historical trends for {{ service_type_label }}.</p>
+    </div>
+    <div class="col-auto">
+        <a href="{% url 'event_instance_report' service_type=service_type service_id=service.id %}" class="btn btn-outline-secondary btn-sm">← Back to report</a>
+    </div>
+</div>
+
+<div class="mb-3">
+    <button id="export-freq" class="btn btn-sm btn-outline-primary">Export frequency CSV</button>
+    <button id="export-time" class="btn btn-sm btn-outline-secondary">Export time series CSV</button>
+</div>
+
+{% if missing_persons %}
+<div class="alert alert-warning">
+    <strong>Missing gender data:</strong> The following attendees are missing gender. You can auto-detect or set them manually.
+    <div class="mt-2">
+        <button id="auto-detect-gender" class="btn btn-sm btn-outline-success">Auto-detect and apply</button>
+    </div>
+    <div class="mt-3">
+        <table class="table table-sm mb-0">
+            <thead><tr><th>Name</th><th>Suggested</th><th>Action</th></tr></thead>
+            <tbody>
+                {% for mp in missing_persons %}
+                <tr>
+                    <td>{{ mp.name }}</td>
+                    <td>{{ mp.inferred }}</td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-primary set-gender" data-person-id="{{ mp.id }}" data-gender="male">Set Male</button>
+                        <button class="btn btn-sm btn-outline-secondary set-gender" data-person-id="{{ mp.id }}" data-gender="female">Set Female</button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<div class="row g-3">
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm p-3">
+            <h5>Gender split</h5>
+            <canvas id="genderPie"></canvas>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm p-3">
+            <h5>Age distribution</h5>
+            <canvas id="ageBar"></canvas>
+        </div>
+    </div>
+
+    <div class="col-12">
+        <div class="card border-0 shadow-sm p-3">
+            <h5>Gender by age group (stacked)</h5>
+            <canvas id="genderAgeStack"></canvas>
+        </div>
+    </div>
+
+    <div class="col-12">
+        <div class="card border-0 shadow-sm p-3">
+            <h5>Attendance over time (instances)</h5>
+            <canvas id="attendanceLine"></canvas>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm p-3">
+            <h5>Frequency of appearance (people count)</h5>
+            <canvas id="freqBar"></canvas>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm p-3">
+            <h5>Current instance: person frequencies</h5>
+            <div style="max-height:300px; overflow:auto;">
+                <table class="table table-sm mb-0">
+                    <thead>
+                        <tr><th>Name</th><th class="text-end">#Instances attended</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for p in current_person_freq %}
+                        <tr>
+                            <td>{{ p.name }}</td>
+                            <td class="text-end">{{ p.count }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+(function(){
+    // Gender pie
+    const genderData = {
+        labels: ['Male','Female'],
+        datasets: [{
+            data: [{{ gender_counts.male }}, {{ gender_counts.female }}],
+            backgroundColor: ['#0d6efd','#d63384','#6c757d']
+        }]
+    };
+    new Chart(document.getElementById('genderPie'), {type: 'pie', data: genderData});
+
+    // Age bar
+    const ageLabels = {{ age_buckets|safe }};
+    const ageData = {
+        labels: ageLabels,
+        datasets: [{label: 'Count', data: {{ age_counts|safe }}, backgroundColor: '#0d6efd'}]
+    };
+    new Chart(document.getElementById('ageBar'), {
+        type:'bar', 
+        data: ageData,
+        options: {
+            plugins: {title: {display: true, text: 'Age Distribution'}},
+            scales: {
+                x: {title: {display: true, text: 'Age Group'}},
+                y: {title: {display: true, text: 'Number of Attendees'}}
+            }
+        }
+    });
+
+    // Gender by age stacked bar
+    const gaLabels = ageLabels;
+    // build datasets manually
+    const genderAge = {{ gender_age|safe }};
+    const maleData = ageLabels.map((l, i) => genderAge[Object.keys(genderAge)[i]]?.male || 0);
+    const femaleData = ageLabels.map((l, i) => genderAge[Object.keys(genderAge)[i]]?.female || 0);
+
+
+    new Chart(document.getElementById('genderAgeStack'), {
+        type: 'bar',
+        data: {
+            labels: gaLabels,
+            datasets: [
+                {label: 'Male', data: maleData, backgroundColor: '#0d6efd'},
+                {label: 'Female', data: femaleData, backgroundColor: '#f06292'}
+            ]
+        },
+        options: {
+            plugins: {title: {display: true, text: 'Gender Distribution by Age Group'}},
+            scales: {
+                x: {stacked: true, title: {display: true, text: 'Age Group'}}, 
+                y: {stacked: true, title: {display: true, text: 'Number of Attendees'}}
+            }
+        }
+    });
+
+    // Attendance over time line
+    const timeLabels = {{ time_labels|safe }};
+    const timeCounts = {{ time_counts|safe }};
+    new Chart(document.getElementById('attendanceLine'), {
+        type:'line', 
+        data:{labels: timeLabels, datasets:[{label:'Attendance', data: timeCounts, borderColor:'#0d6efd', fill:false}]},
+        options: {
+            plugins: {title: {display: true, text: 'Attendance Over Time'}},
+            scales: {
+                x: {title: {display: true, text: 'Date'}},
+                y: {title: {display: true, text: 'Number of Attendees'}}
+            }
+        }
+    });
+
+    // Frequency bar
+    const freqCounts = {{ freq_counts|safe }};
+    const freqLabels = Object.keys(freqCounts).sort((a,b)=>parseInt(a)-parseInt(b));
+    const freqValues = freqLabels.map(k=>freqCounts[k]);
+    new Chart(document.getElementById('freqBar'), {
+        type:'bar', 
+        data:{labels: freqLabels, datasets:[{label:'#People', data: freqValues, backgroundColor:'#198754'}]},
+        options: {
+            plugins: {title: {display: true, text: 'Frequency of Attendance'}},
+            scales: {
+                x: {title: {display: true, text: 'Number of Times Attended'}},
+                y: {title: {display: true, text: 'Number of People'}}
+            }
+        }
+    });
+
+    // CSV export helpers
+    function downloadCSV(filename, rows) {
+        const csvContent = rows.map(r => r.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',')).join('\n');
+        const blob = new Blob([csvContent], {type: 'text/csv;charset=utf-8;'});
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+
+    // Export frequency CSV (count, people)
+    document.getElementById('export-freq')?.addEventListener('click', function(){
+        const rows = [['instances_attended','people_count']];
+        Object.keys(freqCounts).sort((a,b)=>parseInt(a)-parseInt(b)).forEach(k => rows.push([k, freqCounts[k]]));
+        downloadCSV('frequency_counts.csv', rows);
+    });
+
+    // Export time series CSV
+    document.getElementById('export-time')?.addEventListener('click', function(){
+        const rows = [['date','attendance_count']];
+        for (let i=0;i<timeLabels.length;i++) rows.push([timeLabels[i], timeCounts[i]]);
+        downloadCSV('attendance_timeseries.csv', rows);
+    });
+
+    // Set gender handlers
+    const apiSet = '/api/reports/set-gender/';
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+    const csrftoken = getCookie('csrftoken');
+
+    document.querySelectorAll('.set-gender').forEach(function(btn){
+        btn.addEventListener('click', function(){
+            const personId = this.dataset.personId;
+            const gender = this.dataset.gender;
+            fetch(apiSet, {
+                method: 'POST',
+                headers: {'Content-Type':'application/json', 'X-CSRFToken': csrftoken},
+                body: JSON.stringify({person_id: personId, gender: gender})
+            }).then(r=>{
+                if (r.ok) location.reload();
+                else alert('Failed to set gender');
+            });
+        });
+    });
+
+    document.getElementById('auto-detect-gender')?.addEventListener('click', function(){
+        const missing = {{ missing_persons|safe }};
+        const toApply = missing.filter(m => m.inferred);
+        if (!toApply.length) { alert('No inferred genders available.'); return; }
+        Promise.all(toApply.map(m => fetch(apiSet, {
+            method: 'POST',
+            headers: {'Content-Type':'application/json', 'X-CSRFToken': csrftoken},
+            body: JSON.stringify({person_id: m.id, gender: m.inferred})
+        }))).then(()=> location.reload()).catch(()=> alert('Error applying inferred genders'));
+    });
+
+})();
+</script>
+{% endblock %}

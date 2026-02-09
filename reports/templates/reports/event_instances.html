@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block title %}{{ service_type_label }} - Events - Church{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{% url 'events' %}">Events</a></li>
+                <li class="breadcrumb-item active">{{ service_type_label }}</li>
+            </ol>
+        </nav>
+        <h1 class="h3">{{ service_type_label }}</h1>
+        <p class="text-muted mb-0">Create a new instance or select one to record attendance or view the report.</p>
+    </div>
+    <div class="col-auto">
+        <a href="{% url 'events' %}" class="btn btn-outline-secondary btn-sm">← Back to events</a>
+    </div>
+</div>
+
+<!-- Create new instance -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-primary text-white py-2">
+        <strong>Create new event instance</strong>
+    </div>
+    <div class="card-body">
+        <form method="post" class="row g-3 align-items-end">
+            {% csrf_token %}
+            <input type="hidden" name="create_instance" value="1">
+            <div class="col-md-4">
+                <label for="instance_date" class="form-label">Date</label>
+                <input type="date" name="instance_date" id="instance_date" class="form-control" value="{{ today }}" required>
+            </div>
+            <div class="col-12">
+                <div class="small text-muted">Allowed days for creating this event: {{ allowed_days_names }}</div>
+            </div>
+            <div class="col-md-4">
+                <label for="instance_title" class="form-label">Custom name (optional)</label>
+                <input type="text" name="instance_title" id="instance_title" class="form-control" placeholder="e.g. Special Communion">
+            </div>
+            <div class="col-md-4">
+                <button type="submit" class="btn btn-primary">Create & record attendance</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Existing instances -->
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-light py-2">
+        <strong>Recent event instances</strong>
+    </div>
+    <div class="card-body p-0">
+        {% if instances %}
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Instance</th>
+                        <th>Date</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for s in instances %}
+                    <tr>
+                        <td>
+                            {% if s.title %}
+                                {{ service_type_label }} - {{ s.date|date:"M d, Y" }} - {{ s.title }}
+                            {% else %}
+                                {{ service_type_label }} - {{ s.date|date:"M d, Y" }}
+                            {% endif %}
+                        </td>
+                        <td>{{ s.date|date:"Y-m-d" }}</td>
+                        <td>
+                            <a href="{% url 'record_attendance' service_type=service_type service_id=s.id %}" class="btn btn-sm btn-outline-primary">Record</a>
+                            <a href="{% url 'event_instance_report' service_type=service_type service_id=s.id %}" class="btn btn-sm btn-outline-secondary">View report</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-muted p-3 mb-0">No instances yet. Create one above to get started.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

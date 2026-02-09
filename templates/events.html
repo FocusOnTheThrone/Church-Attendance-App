@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block title %}Record Attendance - Church{% endblock %}
+
+{% block content %}
+<style>
+.hover-card { transition: all 0.2s ease; }
+a:hover .hover-card { box-shadow: 0 .5rem 1rem rgba(0,0,0,.15) !important; transform: translateY(-2px); }
+</style>
+<div class="row mb-4">
+    <div class="col">
+        <h1 class="h3">Record attendance</h1>
+        <p class="text-muted mb-0">Select an event type to record who was present.</p>
+    </div>
+</div>
+
+<div class="row g-3 mb-5">
+    {% for type_key, type_label in service_types %}
+    <div class="col-md-4 col-lg-3">
+        <a href="{% url 'record_attendance' service_type=type_key %}" class="text-decoration-none">
+            <div class="card border-0 shadow-sm h-100 hover-card">
+                <div class="card-body text-center py-4">
+                    <h5 class="card-title text-primary mb-0">{{ type_label }}</h5>
+                    <small class="text-muted">Tap to record</small>
+                </div>
+            </div>
+        </a>
+    </div>
+    {% endfor %}
+</div>
+
+<div class="row mt-4 pt-4 border-top">
+    <div class="col-12 d-flex gap-2 justify-content-center flex-wrap">
+        <a href="{% url 'add_member' %}" class="btn btn-primary btn-lg px-4">
+            Add new member
+        </a>
+        <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary btn-lg px-4">
+            Go to dashboard
+        </a>
+
+    </div>
+</div>
+{% endblock %}

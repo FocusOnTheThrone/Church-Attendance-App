@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+
+{% block title %}Church Register - All Members{% endblock %}
+
+{% block content %}
+{% if messages %}
+<div class="row mb-3">
+    <div class="col-12">
+        {% for message in messages %}
+        <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<div class="row mb-4">
+    <div class="col">
+        <h1 class="h3">Church Register</h1>
+        <p class="text-muted mb-0">Full list of all members in the church.</p>
+    </div>
+    <div class="col-auto d-flex align-items-center gap-3">
+        <div class="bg-primary text-white p-3 rounded" style="text-align: center;">
+            <div class="h4 mb-0">{{ people|length }}</div>
+            <div class="small">Total Members</div>
+        </div>
+        <a href="{% url 'add_member' %}?next={% url 'register' %}" class="btn btn-primary btn-sm">+ Add new member</a>
+    </div>
+</div>
+
+<div class="row mb-3 g-2">
+    <div class="col-12">
+        <input type="text" id="search-register" class="form-control" placeholder="Search by name, phone, or email...">
+    </div>
+</div>
+<!-- Collapsible Filter Panel -->
+<div class="mb-3">
+    <button class="btn btn-outline-primary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#filterCollapse" aria-expanded="false" aria-controls="filterCollapse">
+        <span id="filter-toggle-icon">▼</span> Filters
+        {% if title_filter or gender_filter or member_visitor_filter or age_filter or fellowship_filter or occupation_filter or residence_filter %}
+        <span class="badge bg-primary ms-2">Active</span>
+        {% endif %}
+    </button>
+</div>
+
+<div class="collapse mb-3" id="filterCollapse">
+    <div class="card border-0 shadow-sm">
+        <div class="card-body">
+            <form method="get" class="row g-3">
+                <div class="col-md-6 col-lg-4">
+                    <label for="filter-title" class="form-label">Title</label>
+                    <select name="title" id="filter-title" class="form-select form-select-sm" onchange="this.form.submit()">
+                        <option value="">All</option>
+                        {% for value, label in title_choices %}
+                        <option value="{{ value }}" {% if title_filter == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-6 col-lg-4">
+                    <label for="filter-gender" class="form-label">Gender</label>
+                    <select name="gender" id="filter-gender" class="form-select form-select-sm" onchange="this.form.submit()">
+                        <option value="">All</option>
+                        {% for value, label in gender_choices %}
+                        <option value="{{ value }}" {% if gender_filter == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-6 col-lg-4">
+                    <label for="filter-member-visitor" class="form-label">Member / Visitor</label>
+                    <select name="member_visitor" id="filter-member-visitor" class="form-select form-select-sm" onchange="this.form.submit()">
+                        <option value="">All</option>
+                        {% for value, label in member_visitor_choices %}
+                        <option value="{{ value }}" {% if member_visitor_filter == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-6 col-lg-4">
+                    <label for="filter-age" class="form-label">Age</label>
+                    <select name="age" id="filter-age" class="form-select form-select-sm" onchange="this.form.submit()">
+                        <option value="">All</option>
+                        {% for value, label in age_choices %}
+                        <option value="{{ value }}" {% if age_filter == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-6 col-lg-4">
+                    <label for="filter-fellowship" class="form-label">Fellowship</label>
+                    <select name="fellowship" id="filter-fellowship" class="form-select form-select-sm" onchange="this.form.submit()">
+                        <option value="">All</option>
+                        {% for value, label in fellowship_choices %}
+                        <option value="{{ value }}" {% if fellowship_filter == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-6 col-lg-4">
+                    <label for="filter-occupation" class="form-label">Occupation</label>
+                    <select name="occupation" id="filter-occupation" class="form-select form-select-sm" onchange="this.form.submit()">
+                        <option value="">All</option>
+                        {% for val in occupation_choices %}
+                        <option value="{{ val }}" {% if occupation_filter == val %}selected{% endif %}>{{ val }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-6 col-lg-4">
+                    <label for="filter-residence" class="form-label">Residence</label>
+                    <select name="residence" id="filter-residence" class="form-select form-select-sm" onchange="this.form.submit()">
+                        <option value="">All</option>
+                        {% for val in residence_choices %}
+                        <option value="{{ val }}" {% if residence_filter == val %}selected{% endif %}>{{ val }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-12">
+                    {% if title_filter or gender_filter or member_visitor_filter or age_filter or fellowship_filter or occupation_filter or residence_filter %}
+                    <a href="{% url 'register' %}" class="btn btn-outline-secondary btn-sm">Clear all filters</a>
+                    {% endif %}
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+        <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+            <table class="table table-hover table-striped mb-0">
+                <thead class="table-light sticky-top">
+                    <tr>
+                        <th>Name</th>
+                        <th>Gender</th>
+                        <th>Age</th>
+                        <th>Occupation</th>
+                        <th>Fellowship</th>
+                        <th>Residence</th>
+                        <th>Phone</th>
+                        <th>Email</th>
+                        <th>First visit</th>
+                        <th class="text-end" style="width: 4rem;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="register-tbody">
+                    {% for person in people %}
+                    <tr class="register-row" data-search="{{ person.full_name|lower }} {{ person.phone|default:'' }} {{ person.email|default:'' }} {{ person.occupation|default:'' }} {{ person.residence|default:'' }}">
+                        <td><span class="badge bg-secondary me-2">{{ person.get_title_display }}</span>{{ person.full_name }}</td>
+                        <td>{{ person.get_gender_display|default:"—" }}</td>
+                        <td>{% if person.age %}{{ person.age }}{% else %}—{% endif %}</td>
+                        <td>{{ person.occupation|default:"—" }}</td>
+                        <td>{% if person.fellowship %}{{ person.get_fellowship_display }}{% else %}—{% endif %}</td>
+                        <td>{{ person.residence|default:"—" }}</td>
+                        <td>{{ person.phone|default:"—" }}</td>
+                        <td>{{ person.email|default:"—" }}</td>
+                        <td>{{ person.first_visit_date|date:"M d, Y"|default:"—" }}</td>
+                        <td class="text-end">
+                            <form method="post" action="{% url 'delete_person' person.id %}" class="d-inline" onsubmit="return confirm('Remove {{ person.full_name }} from the register? This will also remove their attendance records.');">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-outline-danger btn-sm py-0 px-1" title="Remove from register">✕</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="10" class="text-muted text-center py-4">No members in the register yet. <a href="{% url 'add_member' %}?next={% url 'register' %}">Add a member</a> to get started.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="mt-4 pt-4 border-top">
+    <a href="{% url 'events' %}" class="btn btn-outline-primary">← Back to events</a>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function() {
+    const searchInput = document.getElementById('search-register');
+    const rows = document.querySelectorAll('.register-row');
+    if (searchInput && rows.length) {
+        searchInput.addEventListener('input', function() {
+            const q = this.value.toLowerCase().trim();
+            rows.forEach(function(row) {
+                const text = row.getAttribute('data-search') || '';
+                row.style.display = q === '' || text.includes(q) ? '' : 'none';
+            });
+        });
+    }
+})();
+
+// Toggle filter collapse icon and auto-expand if filters are active
+(function() {
+    const filterCollapse = document.getElementById('filterCollapse');
+    const filterToggle = document.querySelector('[data-bs-target="#filterCollapse"]');
+    const filterIcon = document.getElementById('filter-toggle-icon');
+    
+    if (filterCollapse && filterToggle && filterIcon) {
+        // Auto-expand if any filters are active
+        const hasActiveFilter = filterCollapse.querySelector('select option[selected]') !== null ||
+                                document.querySelector('[name="title"]:has(option[selected])') !== null;
+        if (filterCollapse.classList.contains('show') || document.querySelector('.badge.bg-primary')) {
+            filterCollapse.classList.add('show');
+            filterToggle.setAttribute('aria-expanded', 'true');
+            filterIcon.textContent = '▲';
+        }
+        
+        // Toggle icon on collapse/expand
+        filterCollapse.addEventListener('shown.bs.collapse', function() {
+            filterIcon.textContent = '▲';
+            filterToggle.setAttribute('aria-expanded', 'true');
+        });
+        
+        filterCollapse.addEventListener('hidden.bs.collapse', function() {
+            filterIcon.textContent = '▼';
+            filterToggle.setAttribute('aria-expanded', 'false');
+        });
+    }
+})();
+</script>
+{% endblock %}

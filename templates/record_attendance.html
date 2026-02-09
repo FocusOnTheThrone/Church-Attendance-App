@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+
+{% block title %}Record: {{ instance_display_name }} - Church{% endblock %}
+
+{% block content %}
+{% if messages %}
+<div class="row mb-3">
+    <div class="col-12">
+        {% for message in messages %}
+        <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<div class="row mb-4">
+    <div class="col">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{% url 'events' %}">Events</a></li>
+                <li class="breadcrumb-item"><a href="{% url 'event_instances' service_type=service_type %}">{{ service_type_label }}</a></li>
+                <li class="breadcrumb-item active">Record</li>
+            </ol>
+        </nav>
+        <h1 class="h3">{{ instance_display_name }}</h1>
+        <p class="text-muted mb-0">Record who attended and add optional comments.</p>
+    </div>
+    <div class="col-auto d-flex align-items-center gap-2">
+        <a href="{% url 'event_instance_report' service_type=service_type service_id=service.id %}" class="btn btn-outline-info btn-sm">View report</a>
+        <a href="{% url 'register' %}" class="btn btn-outline-secondary btn-sm">View full register</a>
+        <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary btn-sm">Go to dashboard</a>
+    </div>
+</div>
+
+<form method="post" id="attendance-form">
+    {% csrf_token %}
+
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-light py-2">
+            <strong>Overall comment</strong>
+        </div>
+        <div class="card-body">
+            <textarea name="instance_comment" class="form-control" rows="3" placeholder="Add an overall comment for this event (e.g. summary highlights, victories, challenges, announcements)...">{{ instance_comment|default:service.notes }}</textarea>
+        </div>
+    </div>
+
+    <div class="row mb-3">
+        <div class="col-md-6">
+            <label class="form-label">Search main register</label>
+            <input type="text" id="search-box" class="form-control" placeholder="Type to search by name...">
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-light py-2">
+            <strong>Select attendees and add comments ({{ people|length }} in register)</strong>
+        </div>
+        <div class="card-body p-0" style="max-height: 450px; overflow-y: auto;">
+            <ul class="list-group list-group-flush" id="people-list">
+                {% for person, notes in people_with_notes %}
+                <li class="list-group-item list-group-item-action person-row" data-name="{{ person.full_name|lower }}">
+                    <div class="d-flex align-items-start gap-2">
+                        <div class="form-check mt-1 flex-shrink-0">
+                            <input class="form-check-input" type="checkbox" name="attendees" value="{{ person.id }}"
+                                   id="person-{{ person.id }}"
+                                   {% if person.id in recorded_ids %}checked{% endif %}>
+                        </div>
+                        <div class="flex-grow-1 min-w-0">
+                            <label class="form-check-label" for="person-{{ person.id }}">
+                                {{ person.full_name }}
+                                <span class="badge bg-secondary ms-1">{{ person.get_title_display }}</span>
+                            </label>
+                            <input type="text" name="notes_{{ person.id }}" class="form-control form-control-sm mt-1" placeholder="Comment (optional)" value="{{ notes }}">
+                        </div>
+                    </div>
+                </li>
+                {% empty %}
+                <li class="list-group-item text-muted">No one in the register yet. Add a member first or add a visitor below.</li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+
+    <div class="mb-4">
+        <button type="submit" name="save_attendance" class="btn btn-primary">Save attendance</button>
+    </div>
+</form>
+
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-info text-white py-2">
+        <strong>Visitor not in list?</strong> Add them here (they will be added to the main register)
+    </div>
+    <div class="card-body">
+        <form method="post" id="visitor-form">
+            {% csrf_token %}
+            <input type="hidden" name="service_date" value="{{ service_date|date:'Y-m-d' }}">
+            <div class="row g-2">
+                {% for field in person_form %}
+                <div class="col-md-6">
+                    <label for="{{ field.id_for_label }}" class="form-label small">{{ field.label }}</label>
+                    {{ field }}
+                    {% if field.errors %}<div class="text-danger small">{{ field.errors.0 }}</div>{% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            <button type="submit" name="add_visitor" class="btn btn-info mt-3 text-dark">Add visitor and record</button>
+        </form>
+    </div>
+</div>
+
+<div class="mt-4 pt-4 border-top d-flex gap-2 flex-wrap">
+    <a href="{% url 'event_instances' service_type=service_type %}" class="btn btn-outline-primary">← Back to instances</a>
+    <a href="{% url 'event_instance_report' service_type=service_type service_id=service.id %}" class="btn btn-outline-info">View report</a>
+
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function() {
+    const searchBox = document.getElementById('search-box');
+    const rows = document.querySelectorAll('.person-row');
+    if (searchBox && rows.length) {
+        searchBox.addEventListener('input', function() {
+            const q = this.value.toLowerCase().trim();
+            rows.forEach(function(row) {
+                const name = row.getAttribute('data-name') || '';
+                row.style.display = q === '' || name.includes(q) ? '' : 'none';
+            });
+        });
+    }
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block title %}Report: {{ instance_display_name }} - Church{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{% url 'events' %}">Events</a></li>
+                <li class="breadcrumb-item"><a href="{% url 'event_instances' service_type=service_type %}">{{ service_type_label }}</a></li>
+                <li class="breadcrumb-item active">Report</li>
+            </ol>
+        </nav>
+        <h1 class="h3">Report: {{ instance_display_name }}</h1>
+        <p class="text-muted mb-0">{{ attendances|length }} attendee{{ attendances|length|pluralize }} recorded.</p>
+    </div>
+    <div class="col-auto">
+        <div class="border rounded p-2 d-inline-flex gap-2">
+            <a href="{% url 'record_attendance' service_type=service_type service_id=service.id %}" class="btn btn-outline-primary btn-sm">Edit attendance</a>
+            <a href="{% url 'event_instance_analysis' service_type=service_type service_id=service.id %}" class="btn btn-outline-info btn-sm">Attendance analysis</a>
+            <a href="{% url 'event_instances' service_type=service_type %}" class="btn btn-outline-secondary btn-sm">← Back to instances</a>
+        </div>
+    </div>
+</div>
+
+{% if service.notes %}
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-light py-2">
+        <strong>Overall comment</strong>
+    </div>
+    <div class="card-body">
+        <p class="mb-0">{{ service.notes }}</p>
+    </div>
+</div>
+{% endif %}
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+        {% if attendances %}
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Name</th>
+                        <th>Title</th>
+                        <th>Category</th>
+                        <th>Comments</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for att in attendances %}
+                    <tr>
+                        <td>{{ forloop.counter }}</td>
+                        <td>{{ att.person.full_name }}</td>
+                        <td><span class="badge bg-secondary">{{ att.person.get_title_display }}</span></td>
+                        <td><span class="badge bg-{% if att.category == 'visitor' %}info{% elif att.category == 'healed_of_the_LORD' %}success{% else %}primary{% endif %}">{{ att.get_category_display }}</span></td>
+                        <td>{% if att.notes %}{{ att.notes }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-muted p-4 mb-0">No attendance recorded for this event yet. <a href="{% url 'record_attendance' service_type=service_type service_id=service.id %}">Record attendance</a>.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

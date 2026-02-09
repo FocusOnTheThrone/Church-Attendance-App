@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Church Attendance{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h1 class="h3">Dashboard</h1>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <h2 class="h5 mb-3">Summary (last 7 days)</h2>
+                <div class="row">
+                    <div class="col-md-3">
+                        <div class="p-3 bg-light rounded">
+                            <div class="small text-muted">Total attendance</div>
+                            <div class="h4">{{ total_attendance }}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="p-3 bg-light rounded">
+                            <div class="small text-muted">Visitors</div>
+                            <div class="h4">{{ visitors_count }}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="p-3 bg-light rounded">
+                            <div class="small text-muted">Healed</div>
+                            <div class="h4">{{ healed_count }}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="p-3 bg-light rounded">
+                            <div class="small text-muted">Open follow-ups</div>
+                            <div class="h4">{{ follow_up_count }}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
