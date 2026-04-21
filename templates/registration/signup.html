@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+
+{% block title %}Sign Up - Church Attendance{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6 col-lg-5">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body p-4">
+                <h2 class="h4 mb-4">Create Account</h2>
+                
+                {% if messages %}
+                    {% for message in messages %}
+                        <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+
+                <form method="post">
+                    {% csrf_token %}
+                    
+                    <div class="mb-3">
+                        <label for="id_church_name" class="form-label">Church / Organization Name</label>
+                        <input type="text"
+                               name="church_name"
+                               id="id_church_name"
+                               class="form-control"
+                               value="{{ form.church_name.value|default:'' }}"
+                               placeholder="e.g. Grace Baptist Church"
+                               required>
+                        <div class="form-text text-muted">{{ form.church_name.help_text }}</div>
+                        {% if form.church_name.errors %}
+                            <div class="text-danger small mt-1">
+                                {{ form.church_name.errors.0 }}
+                            </div>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="id_first_name" class="form-label">First Name</label>
+                            <input type="text"
+                                   name="first_name"
+                                   id="id_first_name"
+                                   class="form-control"
+                                   value="{{ form.first_name.value|default:'' }}"
+                                   required>
+                            {% if form.first_name.errors %}
+                                <div class="text-danger small mt-1">
+                                    {{ form.first_name.errors.0 }}
+                                </div>
+                            {% endif %}
+                        </div>
+                        
+                        <div class="col-md-6 mb-3">
+                            <label for="id_last_name" class="form-label">Last Name</label>
+                            <input type="text"
+                                   name="last_name"
+                                   id="id_last_name"
+                                   class="form-control"
+                                   value="{{ form.last_name.value|default:'' }}"
+                                   required>
+                            {% if form.last_name.errors %}
+                                <div class="text-danger small mt-1">
+                                    {{ form.last_name.errors.0 }}
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="id_username" class="form-label">Username</label>
+                        <input type="text"
+                               name="username"
+                               id="id_username"
+                               class="form-control"
+                               value="{{ form.username.value|default:'' }}"
+                               autocapitalize="none"
+                               autocomplete="username"
+                               required>
+                        <div class="form-text text-muted">{{ form.username.help_text }}</div>
+                        {% if form.username.errors %}
+                            <div class="text-danger small mt-1">
+                                {{ form.username.errors.0 }}
+                            </div>
+                        {% endif %}
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="id_email" class="form-label">Email</label>
+                        <input type="email"
+                               name="email"
+                               id="id_email"
+                               class="form-control"
+                               value="{{ form.email.value|default:'' }}"
+                               autocomplete="email"
+                               required>
+                        <div class="form-text text-muted">{{ form.email.help_text }}</div>
+                        {% if form.email.errors %}
+                            <div class="text-danger small mt-1">
+                                {{ form.email.errors.0 }}
+                            </div>
+                        {% endif %}
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="id_password1" class="form-label">Password</label>
+                        <input type="password"
+                               name="password1"
+                               id="id_password1"
+                               class="form-control"
+                               autocomplete="new-password"
+                               required>
+                        <div class="form-text text-muted">{{ form.password1.help_text }}</div>
+                        {% if form.password1.errors %}
+                            <div class="text-danger small mt-1">
+                                {{ form.password1.errors.0 }}
+                            </div>
+                        {% endif %}
+                    </div>
+
+                    <div class="mb-4">
+                        <label for="id_password2" class="form-label">Confirm Password</label>
+                        <input type="password"
+                               name="password2"
+                               id="id_password2"
+                               class="form-control"
+                               autocomplete="new-password"
+                               required>
+                        <div class="form-text text-muted">{{ form.password2.help_text }}</div>
+                        {% if form.password2.errors %}
+                            <div class="text-danger small mt-1">
+                                {{ form.password2.errors.0 }}
+                            </div>
+                        {% endif %}
+                    </div>
+
+                    <button type="submit" class="btn btn-primary w-100">Create Account</button>
+                </form>
+                
+                <div class="text-center mt-3">
+                    <p class="text-muted">
+                        Already have an account? 
+                        <a href="{% url 'accounts:login' %}" class="text-decoration-none">Sign in</a>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

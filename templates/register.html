@@ -89,8 +89,8 @@
                     <label for="filter-fellowship" class="form-label">Fellowship</label>
                     <select name="fellowship" id="filter-fellowship" class="form-select form-select-sm" onchange="this.form.submit()">
                         <option value="">All</option>
-                        {% for value, label in fellowship_choices %}
-                        <option value="{{ value }}" {% if fellowship_filter == value %}selected{% endif %}>{{ label }}</option>
+                        {% for fellowship in fellowship_choices %}
+                        <option value="{{ fellowship.id }}" {% if fellowship_filter == fellowship.id|stringformat:"s" %}selected{% endif %}>{{ fellowship.name }}</option>
                         {% endfor %}
                     </select>
                 </div>
@@ -112,8 +112,17 @@
                         {% endfor %}
                     </select>
                 </div>
+                <div class="col-md-6 col-lg-4">
+                    <label for="filter-department" class="form-label">Department of Service</label>
+                    <select name="department" id="filter-department" class="form-select form-select-sm" onchange="this.form.submit()">
+                        <option value="">All</option>
+                        {% for value, label in department_choices %}
+                        <option value="{{ value }}" {% if department_filter == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
                 <div class="col-12">
-                    {% if title_filter or gender_filter or member_visitor_filter or age_filter or fellowship_filter or occupation_filter or residence_filter %}
+                    {% if title_filter or gender_filter or member_visitor_filter or age_filter or fellowship_filter or occupation_filter or residence_filter or department_filter %}
                     <a href="{% url 'register' %}" class="btn btn-outline-secondary btn-sm">Clear all filters</a>
                     {% endif %}
                 </div>
@@ -132,6 +141,7 @@
                         <th>Gender</th>
                         <th>Age</th>
                         <th>Occupation</th>
+                        <th>Department of Service</th>
                         <th>Fellowship</th>
                         <th>Residence</th>
                         <th>Phone</th>
@@ -142,11 +152,16 @@
                 </thead>
                 <tbody id="register-tbody">
                     {% for person in people %}
-                    <tr class="register-row" data-search="{{ person.full_name|lower }} {{ person.phone|default:'' }} {{ person.email|default:'' }} {{ person.occupation|default:'' }} {{ person.residence|default:'' }}">
-                        <td><span class="badge bg-secondary me-2">{{ person.get_title_display }}</span>{{ person.full_name }}</td>
+                    <tr class="register-row" data-search="{{ person.full_name|lower }} {{ person.phone|default:'' }} {{ person.email|default:'' }} {{ person.occupation|default:'' }} {{ person.residence|default:'' }} {{ person.get_department_display|default:'' }}">
+                        <td>
+                            <a href="{% url 'personal-report' person.id %}" class="text-decoration-none">
+                                <span class="badge bg-secondary me-2">{{ person.get_title_display }}</span>{{ person.full_name }}
+                            </a>
+                        </td>
                         <td>{{ person.get_gender_display|default:"—" }}</td>
                         <td>{% if person.age %}{{ person.age }}{% else %}—{% endif %}</td>
                         <td>{{ person.occupation|default:"—" }}</td>
+                        <td>{% if person.department %}{{ person.get_department_display }}{% else %}—{% endif %}</td>
                         <td>{% if person.fellowship %}{{ person.get_fellowship_display }}{% else %}—{% endif %}</td>
                         <td>{{ person.residence|default:"—" }}</td>
                         <td>{{ person.phone|default:"—" }}</td>
@@ -161,7 +176,7 @@
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="10" class="text-muted text-center py-4">No members in the register yet. <a href="{% url 'add_member' %}?next={% url 'register' %}">Add a member</a> to get started.</td>
+                        <td colspan="11" class="text-muted text-center py-4">No members in register yet. <a href="{% url 'add_member' %}?next={% url 'register' %}">Add a member</a> to get started.</td>
                     </tr>
                     {% endfor %}
                 </tbody>

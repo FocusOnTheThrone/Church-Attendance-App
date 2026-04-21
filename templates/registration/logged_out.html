@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block title %}Logged Out{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body text-center p-5">
+                <div class="mb-4">
+                    <div class="display-4 text-success mb-3">✓</div>
+                    <h3 class="card-title">Successfully Signed Out</h3>
+                </div>
+                <p class="text-muted mb-4">You have been successfully signed out of your account.</p>
+                <div class="d-grid gap-2 d-md-flex justify-content-md-center">
+                    <a href="{% url 'accounts:login' %}" class="btn btn-primary">Sign In Again</a>
+                    <a href="{% url 'events' %}" class="btn btn-outline-secondary">Back to Home</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -42,7 +42,7 @@
                     <a class="nav-link" href="{% url 'dashboard' %}">Dashboard</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" href="{% url 'register' %}">Register</a>
+                    <a class="nav-link" href="{% url 'register' %}">Main Register</a>
                 </li>
             </ul>
             <ul class="navbar-nav ms-auto">
@@ -51,6 +51,26 @@
                         📥 Install App
                     </button>
                 </li>
+                {% if request.user.is_authenticated and accessible_organizations|length > 1 %}
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" href="#" id="orgSwitchDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false" title="Switch church/organization">
+                        🏛️ Switch church
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="orgSwitchDropdown">
+                        {% for org in accessible_organizations %}
+                        <li>
+                            <form method="post" action="{% url 'accounts:switch_organization' %}" class="d-inline">
+                                {% csrf_token %}
+                                <input type="hidden" name="organization_id" value="{{ org.id }}">
+                                <button type="submit" class="dropdown-item {% if current_organization.id == org.id %}active{% endif %}">
+                                    {{ org.name }}
+                                </button>
+                            </form>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </li>
+                {% endif %}
                 {% if request.user.is_authenticated %}
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" id="settingsDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
@@ -58,8 +78,8 @@
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="settingsDropdown">
                             <li><h6 class="dropdown-header">Account</h6></li>
-                            <li><a class="dropdown-item" href="{% url 'login' %}">View Profile</a></li>
-                            <li><a class="dropdown-item" href="{% url 'password_change' %}">Change Password</a></li>
+                            <li><a class="dropdown-item" href="{% url 'accounts:login' %}">View Profile</a></li>
+                            <li><a class="dropdown-item" href="{% url 'accounts:password_change' %}">Change Password</a></li>
                             <li><hr class="dropdown-divider"></li>
                             
                             <li><h6 class="dropdown-header">System Settings</h6></li>
@@ -79,15 +99,24 @@
                             <li><a class="dropdown-item" href="#feedback">💬 Feedback & Support</a></li>
                         </ul>
                     </li>
-                    <li class="nav-item">
-                        <span class="navbar-text d-flex align-items-center gap-2">
-                            <span class="badge bg-secondary">👤 {{ request.user.get_full_name|default:request.user.username }}</span>
-                            <a class="nav-link text-danger p-0" href="{% url 'logout' %}">Sign out</a>
-                        </span>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle d-flex align-items-center gap-2" href="#" id="accountDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <span class="badge bg-secondary">👤 {{ request.user.username }}</span>
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="accountDropdown">
+                            <li><a class="dropdown-item" href="{% url 'accounts:login' %}?next={{ request.get_full_path|urlencode }}">Switch account</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li>
+                                <form method="post" action="{% url 'accounts:logout' %}" class="d-inline w-100">
+                                    {% csrf_token %}
+                                    <button type="submit" class="dropdown-item text-danger">Sign out</button>
+                                </form>
+                            </li>
+                        </ul>
                     </li>
                 {% else %}
                     <li class="nav-item">
-                        <a class="nav-link" href="{% url 'login' %}">Sign in</a>
+                        <a class="nav-link" href="{% url 'accounts:login' %}">Sign in</a>
                     </li>
                 {% endif %}
             </ul>
@@ -96,6 +125,19 @@
 </nav>
 
 <main class="container mb-5">
+    {% if request.user.is_authenticated %}
+    <div class="text-center mb-4">
+        <div class="d-inline-block px-4 py-2 bg-white shadow-sm rounded-pill border">
+            <span class="text-primary fw-semibold">
+                {% if current_organization and current_organization.name %}
+                    {{ current_organization.name }}
+                {% else %}
+                    {{ request.user.username }}
+                {% endif %}
+            </span>
+        </div>
+    </div>
+    {% endif %}
     {% block content %}{% endblock %}
 </main>
 

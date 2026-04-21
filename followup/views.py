@@ -2,24 +2,37 @@ from datetime import date, timedelta
 
 from django.db.models import Max, Q
 from django.utils.dateparse import parse_date
+from django.shortcuts import get_object_or_404
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_protect, csrf_exempt
+from django.views.decorators.http import require_http_methods, require_POST
+from django.contrib.auth.decorators import login_required
+from django.utils import timezone
 from rest_framework import viewsets, permissions
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status as http_status
+import json
 
-from attendance.models import Person
-from .models import FollowUpCase
+from attendance.models import Person, Service
+from .models import FollowUpCase, FollowUpRecord
 from .serializers import FollowUpCaseSerializer
 
 
 class FollowUpCaseViewSet(viewsets.ModelViewSet):
     """
-    CRUD API for follow-up cases.
+    CRUD API for follow-up cases. Scoped to the user's organization.
     """
 
-    queryset = FollowUpCase.objects.select_related("person", "assigned_to")
     serializer_class = FollowUpCaseSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        qs = FollowUpCase.objects.select_related("person", "assigned_to")
+        org = getattr(self.request.user, 'organization', None)
+        if org:
+            qs = qs.filter(person__organization=org)
+        return qs
 
 
 class FollowUpSuggestionsView(APIView):
@@ -51,9 +64,12 @@ class FollowUpSuggestionsView(APIView):
             return Response({"detail": "as_of must be in YYYY-MM-DD format."}, status=http_status.HTTP_400_BAD_REQUEST)
 
         cutoff = as_of - timedelta(days=weeks * 7)
+        org = getattr(request.user, 'organization', None)
 
         # Last seen date per person (based on Attendance -> Service.date)
         people = Person.objects.annotate(last_seen=Max("attendances__service__date"))
+        if org:
+            people = people.filter(organization=org)
 
         if include_never_attended:
             people = people.filter(Q(last_seen__lt=cutoff) | Q(last_seen__isnull=True))
@@ -138,3 +154,83 @@ class GenerateFollowUpCasesView(APIView):
             {"created": created, "skipped_existing": skipped_existing},
             status=http_status.HTTP_201_CREATED,
         )
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@login_required
+def batch_create_followup(request):
+    """
+    API endpoint to create multiple follow-up records at once.
+    Called from dashboard when user saves follow-up checkboxes and comments.
+    """
+    try:
+        data = json.loads(request.body)
+        followups = data.get('followups', [])
+        
+        if not followups:
+            return JsonResponse({'success': False, 'error': 'No follow-up data provided'})
+        
+        created_count = 0
+        
+        for followup_data in followups:
+            person_id = followup_data.get('person_id')
+            service_id = followup_data.get('service_id')
+            comments = followup_data.get('comments', '')
+            is_completed = followup_data.get('is_completed', False)
+            
+            # Validate required fields
+            if not person_id or not service_id:
+                continue
+                
+            # Get objects
+            person = get_object_or_404(Person, id=person_id)
+            service = get_object_or_404(Service, id=service_id)
+            
+            # Create or get follow-up case
+            followup_case, created = FollowUpCase.objects.get_or_create(
+                person=person,
+                reason=FollowUpCase.REASON_ABSENT,
+                defaults={'status': FollowUpCase.STATUS_OPEN}
+            )
+            
+            # Check if follow-up record already exists for this person and service
+            existing_record = FollowUpRecord.objects.filter(
+                person=person,
+                service=service
+            ).first()
+            
+            if existing_record:
+                # Update existing record
+                existing_record.comments = comments
+                existing_record.is_completed = is_completed
+                existing_record.contacted_by = request.user
+                existing_record.follow_up_date = timezone.now().date()
+                if is_completed and not existing_record.completed_at:
+                    existing_record.completed_at = timezone.now()
+                existing_record.save()
+                created_count += 1
+            else:
+                # Create new record
+                FollowUpRecord.objects.create(
+                    person=person,
+                    service=service,
+                    followup_case=followup_case,
+                    contacted_by=request.user,
+                    comments=comments,
+                    is_completed=is_completed,
+                    follow_up_date=timezone.now().date(),
+                    outcome=FollowUpRecord.OUTCOME_SUCCESSFUL if is_completed else FollowUpRecord.OUTCOME_PENDING
+                )
+                created_count += 1
+        
+        return JsonResponse({
+            'success': True,
+            'created_count': created_count,
+            'message': f'Successfully created/updated {created_count} follow-up records'
+        })
+        
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'Invalid JSON data'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})

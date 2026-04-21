@@ -6,6 +6,34 @@ from django.contrib.auth import get_user_model
 User = get_user_model()
 
 
+class Fellowship(models.Model):
+    """
+    Represents fellowship groups. Scoped per organization (church).
+    """
+    
+    organization = models.ForeignKey(
+        "accounts.Organization",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="fellowships",
+    )
+    name = models.CharField(max_length=100)
+    description = models.TextField(blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['name']
+        verbose_name = 'Fellowship'
+        verbose_name_plural = 'Fellowships'
+        unique_together = [('organization', 'name')]
+    
+    def __str__(self):
+        return self.name
+
+
 class Person(models.Model):
     """
     Represents an individual connected to the church.
@@ -48,11 +76,9 @@ class Person(models.Model):
 
     MALE = "male"
     FEMALE = "female"
-    OTHER = "other"
     GENDER_CHOICES = [
         (MALE, "Male"),
         (FEMALE, "Female"),
-        (OTHER, "Other / Unspecified"),
     ]
 
     MEMBER = "member"
@@ -62,7 +88,26 @@ class Person(models.Model):
         (VISITOR_TYPE, "Visitor"),
     ]
 
-    # Fellowship groups
+    # Age range choices for filtering
+    AGE_0_12 = "0-12"
+    AGE_13_17 = "13-17"
+    AGE_18_25 = "18-25"
+    AGE_26_35 = "26-35"
+    AGE_36_50 = "36-50"
+    AGE_51_65 = "51-65"
+    AGE_OVER_65 = "65+"
+    
+    AGE_CHOICES = [
+        (AGE_0_12, "Children (0-12)"),
+        (AGE_13_17, "Teens (13-17)"),
+        (AGE_18_25, "Young Adults (18-25)"),
+        (AGE_26_35, "Adults (26-35)"),
+        (AGE_36_50, "Adults (36-50)"),
+        (AGE_51_65, "Adults (51-65)"),
+        (AGE_OVER_65, "Seniors (65+)"),
+    ]
+
+    # Fellowship groups (legacy choices for backward compatibility)
     MENS_FELLOWSHIP = "mens_fellowship"
     WOMENS_FELLOWSHIP = "womens_fellowship"
     YOUTH_FELLOWSHIP = "youth_fellowship"
@@ -72,6 +117,8 @@ class Person(models.Model):
     PRAYER = "prayer"
     NONE = "none"
     OTHER_FELLOWSHIP = "other"
+    
+    # Legacy choices for backward compatibility
     FELLOWSHIP_CHOICES = [
         (MENS_FELLOWSHIP, "Men's Fellowship"),
         (WOMENS_FELLOWSHIP, "Women's Fellowship"),
@@ -84,23 +131,44 @@ class Person(models.Model):
         (OTHER_FELLOWSHIP, "Other"),
     ]
 
-    # Age groups for filtering
-    AGE_0_12 = "0_12"
-    AGE_13_19 = "13_19"
-    AGE_20_35 = "20_35"
-    AGE_36_PLUS = "36_plus"
-    AGE_CHOICES = [
-        (AGE_0_12, "0-12"),
-        (AGE_13_19, "13-19"),
-        (AGE_20_35, "20-35"),
-        (AGE_36_PLUS, "36+"),
+    # Department choices for service areas
+    MUSIC = "music"
+    USHERING = "ushering"
+    PRAYER = "prayer"
+    MEDIA = "media"
+    CHILDREN_MINISTRY = "children_ministry"
+    YOUTH_MINISTRY = "youth_ministry"
+    OUTREACH = "outreach"
+    ADMINISTRATION = "administration"
+    MAINTENANCE = "maintenance"
+    SECURITY = "security"
+    HOSPITALITY = "hospitality"
+    TEACHING = "teaching"
+    NONE_DEPT = "none"
+    OTHER_DEPT = "other"
+    
+    DEPARTMENT_CHOICES = [
+        (MUSIC, "Music"),
+        (USHERING, "Ushering"),
+        (PRAYER, "Prayer"),
+        (MEDIA, "Media"),
+        (CHILDREN_MINISTRY, "Children Ministry"),
+        (YOUTH_MINISTRY, "Youth Ministry"),
+        (OUTREACH, "Outreach"),
+        (ADMINISTRATION, "Administration"),
+        (MAINTENANCE, "Maintenance"),
+        (SECURITY, "Security"),
+        (HOSPITALITY, "Hospitality"),
+        (TEACHING, "Teaching"),
+        (NONE_DEPT, "None"),
+        (OTHER_DEPT, "Other"),
     ]
 
     full_name = models.CharField(max_length=200)
     gender = models.CharField(
         max_length=10,
         choices=GENDER_CHOICES,
-        default=OTHER,
+        default=MALE,
     )
     date_of_birth = models.DateField(null=True, blank=True)
     phone = models.CharField(max_length=32, blank=True)
@@ -112,9 +180,28 @@ class Person(models.Model):
     )
     first_visit_date = models.DateField(null=True, blank=True)
     occupation = models.CharField(max_length=100, blank=True)
-    fellowship = models.CharField(max_length=30, choices=FELLOWSHIP_CHOICES, default=NONE, blank=True)
+    fellowship = models.ForeignKey(
+        Fellowship, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        related_name='people'
+    )
+    department = models.CharField(
+        max_length=30,
+        choices=DEPARTMENT_CHOICES,
+        default=NONE_DEPT,
+        blank=True
+    )
     residence = models.CharField(max_length=200, blank=True)
     notes = models.TextField(blank=True)
+    organization = models.ForeignKey(
+        "accounts.Organization",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="people",
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -130,6 +217,12 @@ class Person(models.Model):
         if self.date_of_birth:
             return (date.today() - self.date_of_birth).days // 365
         return None
+
+    def get_fellowship_display(self):
+        """Return fellowship display name, handling both FK and legacy choices."""
+        if self.fellowship:
+            return str(self.fellowship)
+        return "—"
 
 
 class Service(models.Model):
@@ -170,6 +263,13 @@ class Service(models.Model):
     location = models.CharField(max_length=200, blank=True)
     notes = models.TextField(blank=True)
 
+    organization = models.ForeignKey(
+        "accounts.Organization",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="services",
+    )
     created_by = models.ForeignKey(
         User,
         null=True,

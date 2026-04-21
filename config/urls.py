@@ -30,6 +30,7 @@ from reports.views import (
     record_attendance_view,
     register_view,
 )
+from followup.personal_views import personal_report
 
 
 @api_view(["GET"])
@@ -47,8 +48,9 @@ urlpatterns = [
     path("events/<str:service_type>/<int:service_id>/report/", event_instance_report_view, name="event_instance_report"),
     path("events/<str:service_type>/<int:service_id>/analysis/", attendance_analysis_view, name="event_instance_analysis"),
     path("register/", register_view, name="register"),
+    path("followup/person/<int:person_id>/", personal_report, name="personal-report"),
     path("staff-dashboard/", admin.site.urls),  # Hidden admin panel (only accessible if you know the URL)
-    path("accounts/", include("django.contrib.auth.urls")),
+    path("accounts/", include("accounts.urls")),
     path("api/", api_root, name="api-root"),
     path("api/attendance/", include("attendance.urls")),
     path("api/followup/", include("followup.urls")),

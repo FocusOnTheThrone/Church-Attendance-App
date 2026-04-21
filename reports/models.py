@@ -5,9 +5,16 @@ from attendance.models import Service
 
 class WeeklySummary(models.Model):
     """
-    Stores pre-computed weekly metrics to make report generation fast.
+    Stores pre-computed weekly metrics. Scoped per organization.
     """
 
+    organization = models.ForeignKey(
+        "accounts.Organization",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="weekly_summaries",
+    )
     week_start = models.DateField()
     week_end = models.DateField()
 

@@ -1,17 +1,22 @@
 from django import forms
 
-from .models import Person, Service, Attendance
+from .models import Person, Service, Attendance, Fellowship
 
 
 class VisitorForm(forms.ModelForm):
     """Form for adding a visitor (title=Visitor, first_visit_date set in view)."""
+
+    gender = forms.ChoiceField(
+        choices=[("", "—")] + list(Person.GENDER_CHOICES),
+        required=True,
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
 
     class Meta:
         model = Person
         fields = ["full_name", "gender", "date_of_birth", "phone", "email", "notes"]
         widgets = {
             "full_name": forms.TextInput(attrs={"class": "form-control", "placeholder": "Full name", "required": True}),
-            "gender": forms.Select(attrs={"class": "form-select"}),
             "date_of_birth": forms.DateInput(attrs={"class": "form-control", "type": "date"}),
             "phone": forms.TextInput(attrs={"class": "form-control", "placeholder": "Phone number"}),
             "email": forms.EmailInput(attrs={"class": "form-control", "placeholder": "Email address"}),
@@ -22,10 +27,24 @@ class VisitorForm(forms.ModelForm):
 class PersonForm(forms.ModelForm):
     """Form for adding a new person."""
 
-    fellowship = forms.ChoiceField(
-        choices=[("", "—")] + list(Person.FELLOWSHIP_CHOICES),
+    gender = forms.ChoiceField(
+        choices=[("", "—")] + list(Person.GENDER_CHOICES),
+        required=True,
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+
+    fellowship = forms.ModelChoiceField(
+        queryset=Fellowship.objects.filter(is_active=True).order_by('name'),
+        empty_label="—",
         required=False,
         widget=forms.Select(attrs={"class": "form-select"}),
+    )
+
+    department = forms.ChoiceField(
+        choices=[("", "—")] + list(Person.DEPARTMENT_CHOICES),
+        required=False,
+        widget=forms.Select(attrs={"class": "form-select"}),
+        label="Department of Service"
     )
 
     class Meta:
@@ -39,6 +58,7 @@ class PersonForm(forms.ModelForm):
             "title",
             "occupation",
             "fellowship",
+            "department",
             "residence",
             "first_visit_date",
             "notes",

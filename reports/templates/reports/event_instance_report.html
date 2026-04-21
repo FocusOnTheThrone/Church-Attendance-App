@@ -19,6 +19,7 @@
         <div class="border rounded p-2 d-inline-flex gap-2">
             <a href="{% url 'record_attendance' service_type=service_type service_id=service.id %}" class="btn btn-outline-primary btn-sm">Edit attendance</a>
             <a href="{% url 'event_instance_analysis' service_type=service_type service_id=service.id %}" class="btn btn-outline-info btn-sm">Attendance analysis</a>
+            <button id="generate-whatsapp-report" class="btn btn-success btn-sm" data-service-id="{{ service.id }}" data-service-type="{{ service_type }}">📱 WhatsApp Report</button>
             <a href="{% url 'event_instances' service_type=service_type %}" class="btn btn-outline-secondary btn-sm">← Back to instances</a>
         </div>
     </div>
@@ -67,4 +68,100 @@
         {% endif %}
     </div>
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.getElementById('generate-whatsapp-report')?.addEventListener('click', function() {
+    const serviceId = this.dataset.serviceId;
+    const serviceType = this.dataset.serviceType;
+    
+    // Show loading state
+    this.disabled = true;
+    this.innerHTML = '⏳ Generating...';
+    
+    // Fetch the report from API
+    fetch(`/api/reports/event-instance-text/?service_id=${serviceId}&service_type=${serviceType}`)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Failed to generate report');
+            }
+            return response.json();
+        })
+        .then(data => {
+            // Create modal to display and copy the report
+            const modalHtml = `
+                <div class="modal fade" id="whatsappReportModal" tabindex="-1">
+                    <div class="modal-dialog modal-lg">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title">📱 WhatsApp Report Generated</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="alert alert-success">
+                                    <strong>Report Statistics:</strong><br>
+                                    📊 Total Attendance: ${data.total_attendance}<br>
+                                    👥 Members: ${data.members_count}<br>
+                                    👋 Visitors: ${data.visitors_count}<br>
+                                    ✝️ Healed: ${data.healed_count}<br>
+                                    📏 Message Length: ${data.message_length} characters
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold">Report Message (ready for WhatsApp):</label>
+                                    <textarea class="form-control" rows="15" readonly>${data.message}</textarea>
+                                </div>
+                                <div class="d-grid gap-2">
+                                    <button id="copy-report" class="btn btn-primary">📋 Copy to Clipboard</button>
+                                    <button id="open-whatsapp" class="btn btn-success">💬 Open WhatsApp</button>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Remove existing modal if present
+            const existingModal = document.getElementById('whatsappReportModal');
+            if (existingModal) {
+                existingModal.remove();
+            }
+            
+            // Add modal to page and show it
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+            const modal = new bootstrap.Modal(document.getElementById('whatsappReportModal'));
+            modal.show();
+            
+            // Add copy functionality
+            document.getElementById('copy-report')?.addEventListener('click', function() {
+                navigator.clipboard.writeText(data.message).then(() => {
+                    this.textContent = '✅ Copied!';
+                    setTimeout(() => {
+                        this.textContent = '📋 Copy to Clipboard';
+                    }, 2000);
+                }).catch(() => {
+                    alert('Failed to copy to clipboard');
+                });
+            });
+            
+            // Add WhatsApp functionality
+            document.getElementById('open-whatsapp')?.addEventListener('click', function() {
+                const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(data.message)}`;
+                window.open(whatsappUrl, '_blank');
+            });
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Failed to generate WhatsApp report. Please try again.');
+        })
+        .finally(() => {
+            // Restore button state
+            this.disabled = false;
+            this.innerHTML = '📱 WhatsApp Report';
+        });
+});
+</script>
 {% endblock %}

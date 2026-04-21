@@ -13,7 +13,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 
 from attendance.forms import PersonForm, VisitorForm
-from attendance.models import Attendance, Person, Service
+from attendance.models import Fellowship, Person, Service, Attendance
 from followup.models import FollowUpCase
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404
@@ -88,22 +88,28 @@ class WeeklySummaryView(APIView):
 
     def get(self, request):
         week_start, week_end = _get_date_range_from_query_params(request)
+        org = getattr(request.user, 'organization', None)
 
         # Compute metrics directly from Attendance
         qs = Attendance.objects.filter(
             service__date__gte=week_start,
             service__date__lte=week_end,
         )
+        if org:
+            qs = qs.filter(service__organization=org)
 
         total_attendance = qs.count()
         visitors_count = qs.filter(category=Attendance.VISITOR).count()
         healed_count = qs.filter(category=Attendance.HEALED).count()
 
         # Follow-up count (open + in progress) as of the end date of the range
-        follow_up_count = FollowUpCase.objects.filter(
+        fup_qs = FollowUpCase.objects.filter(
             status__in=[FollowUpCase.STATUS_OPEN, FollowUpCase.STATUS_IN_PROGRESS],
             created_at__date__lte=week_end,
-        ).count()
+        )
+        if org:
+            fup_qs = fup_qs.filter(person__organization=org)
+        follow_up_count = fup_qs.count()
 
         data = {
             "week_start": week_start,
@@ -131,20 +137,26 @@ class WeeklyReportTextView(APIView):
 
     def get(self, request):
         week_start, week_end = _get_date_range_from_query_params(request)
+        org = getattr(request.user, 'organization', None)
 
         qs = Attendance.objects.filter(
             service__date__gte=week_start,
             service__date__lte=week_end,
         )
+        if org:
+            qs = qs.filter(service__organization=org)
 
         total_attendance = qs.count()
         visitors_count = qs.filter(category=Attendance.VISITOR).count()
         healed_count = qs.filter(category=Attendance.HEALED).count()
 
-        follow_up_count = FollowUpCase.objects.filter(
+        fup_qs = FollowUpCase.objects.filter(
             status__in=[FollowUpCase.STATUS_OPEN, FollowUpCase.STATUS_IN_PROGRESS],
             created_at__date__lte=week_end,
-        ).count()
+        )
+        if org:
+            fup_qs = fup_qs.filter(person__organization=org)
+        follow_up_count = fup_qs.count()
 
         message_lines = [
             "WEEKLY CHURCH REPORT",
@@ -211,6 +223,7 @@ class AttendanceTrendView(APIView):
 
         as_of = date.today()
         results = []
+        org = getattr(request.user, 'organization', None)
 
         # Build from oldest to newest week
         for i in range(weeks, 0, -1):
@@ -221,6 +234,8 @@ class AttendanceTrendView(APIView):
                 service__date__gte=week_start,
                 service__date__lte=week_end,
             )
+            if org:
+                qs = qs.filter(service__organization=org)
 
             total_attendance = qs.count()
             visitors_count = qs.filter(category=Attendance.VISITOR).count()
@@ -245,8 +260,28 @@ class AttendanceTrendView(APIView):
         )
 
 
-def _get_people_ordered_by_title():
-    """Return all people ordered by title hierarchy, then name."""
+def _get_org(request):
+    """Return the current user's organization (from session or primary), or None."""
+    if not request.user.is_authenticated:
+        return None
+    accessible = getattr(request.user, 'get_accessible_organizations', lambda: [])()
+    if not accessible:
+        return getattr(request.user, 'organization', None)
+    # Check session for switched org
+    current_id = request.session.get('current_organization_id')
+    if current_id:
+        for org in accessible:
+            if org.id == current_id:
+                return org
+    # Default to primary org; persist to session
+    org = request.user.organization or (accessible[0] if accessible else None)
+    if org:
+        request.session['current_organization_id'] = org.id
+    return org
+
+
+def _get_people_ordered_by_title(organization=None):
+    """Return people ordered by title hierarchy, optionally filtered by organization."""
     title_order = Case(
         When(title=Person.PROPHET, then=Value(1)),
         When(title=Person.GENERAL_OVERSEER, then=Value(2)),
@@ -264,12 +299,18 @@ def _get_people_ordered_by_title():
         When(title=Person.EMPLOYEE, then=Value(14)),
         default=Value(99),
     )
-    return Person.objects.all().annotate(title_sort=title_order).order_by("title_sort", "full_name")
+    qs = Person.objects.all()
+    if organization:
+        qs = qs.filter(organization=organization)
+    return qs.annotate(title_sort=title_order).order_by("title_sort", "full_name")
 
 
 @login_required
 def events_page_view(request):
     """Landing page after login - list of service types to record attendance."""
+    org = _get_org(request)
+    if not org:
+        messages.warning(request, "Your account is not associated with a church. Please contact an administrator.")
     return render(request, "reports/events.html", {"service_types": SERVICE_TYPES})
 
 
@@ -294,7 +335,8 @@ def _get_age_bounds(age_group):
 @login_required
 def register_view(request):
     """Full list of all members/people in the church with filters."""
-    people = _get_people_ordered_by_title()
+    org = _get_org(request)
+    people = _get_people_ordered_by_title(org)
     params = request.GET
     title_filter = params.get("title", "").strip()
     gender_filter = params.get("gender", "").strip()
@@ -303,6 +345,7 @@ def register_view(request):
     fellowship_filter = params.get("fellowship", "").strip()
     occupation_filter = params.get("occupation", "").strip()
     residence_filter = params.get("residence", "").strip()
+    department_filter = params.get("department", "").strip()
 
     if title_filter:
         people = people.filter(title=title_filter)
@@ -325,19 +368,26 @@ def register_view(request):
             elif max_dob is not None:
                 people = people.filter(date_of_birth__isnull=False, date_of_birth__lte=max_dob)
     if fellowship_filter:
-        people = people.filter(fellowship=fellowship_filter)
+        people = people.filter(fellowship_id=fellowship_filter)
     if occupation_filter:
         people = people.filter(occupation__iexact=occupation_filter)
     if residence_filter:
         people = people.filter(residence__icontains=residence_filter)
+    if department_filter:
+        people = people.filter(department=department_filter)
 
     # Distinct occupations and residences for filter dropdowns
+    person_qs = Person.objects.all()
+    if org:
+        person_qs = person_qs.filter(organization=org)
     occupation_choices = sorted(
-        {v.strip() for v in Person.objects.exclude(occupation="").values_list("occupation", flat=True) if v and v.strip()}
+        {v.strip() for v in person_qs.exclude(occupation="").values_list("occupation", flat=True) if v and v.strip()}
     )
     residence_choices = sorted(
-        {v.strip() for v in Person.objects.exclude(residence="").values_list("residence", flat=True) if v and v.strip()}
+        {v.strip() for v in person_qs.exclude(residence="").values_list("residence", flat=True) if v and v.strip()}
     )
+
+    fellowship_qs = Fellowship.objects.filter(organization=org) if org else Fellowship.objects.none()
 
     context = {
         "people": people,
@@ -348,13 +398,15 @@ def register_view(request):
         "fellowship_filter": fellowship_filter,
         "occupation_filter": occupation_filter,
         "residence_filter": residence_filter,
+        "department_filter": department_filter,
         "title_choices": Person.TITLE_CHOICES,
         "gender_choices": Person.GENDER_CHOICES,
         "member_visitor_choices": Person.MEMBER_VISITOR_CHOICES,
         "age_choices": Person.AGE_CHOICES,
-        "fellowship_choices": Person.FELLOWSHIP_CHOICES,
+        "fellowship_choices": fellowship_qs.filter(is_active=True).order_by('name'),
         "occupation_choices": occupation_choices,
         "residence_choices": residence_choices,
+        "department_choices": Person.DEPARTMENT_CHOICES,
     }
     return render(request, "register.html", context)
 
@@ -362,15 +414,22 @@ def register_view(request):
 @login_required
 def add_member_view(request):
     """Add a new member to the main register."""
+    org = _get_org(request)
     next_url = request.GET.get("next") or request.POST.get("next", "events")
     if request.method == "POST":
         form = PersonForm(request.POST)
         if form.is_valid():
-            person = form.save()
+            person = form.save(commit=False)
+            if org:
+                person.organization = org
+            person.save()
+            form.save_m2m()
             messages.success(request, f"Member '{person.full_name}' added successfully.")
             return redirect(next_url if next_url else "events")
     else:
         form = PersonForm(initial={"title": Person.BROTHER})
+    if org:
+        form.fields['fellowship'].queryset = Fellowship.objects.filter(organization=org, is_active=True).order_by('name')
     cancel_url = next_url if (next_url and next_url.startswith("/")) else reverse("events")
     return render(request, "add_member.html", {"form": form, "next_url": next_url, "cancel_url": cancel_url})
 
@@ -380,8 +439,12 @@ def delete_person_view(request, person_id):
     """Delete a person from the register. POST only."""
     if request.method != "POST":
         return redirect("register")
+    org = _get_org(request)
     try:
-        person = Person.objects.get(pk=person_id)
+        qs = Person.objects.filter(pk=person_id)
+        if org:
+            qs = qs.filter(organization=org)
+        person = qs.get()
         name = person.full_name
         person.delete()
         messages.success(request, f"'{name}' has been removed from the register.")
@@ -410,8 +473,12 @@ def event_instances_view(request, service_type):
         messages.error(request, "Invalid event type.")
         return redirect("events")
 
+    org = _get_org(request)
     service_type_label = dict(SERVICE_TYPES).get(service_type, service_type)
-    instances = Service.objects.filter(service_type=service_type).order_by("-date", "-start_time")[:50]
+    instances_qs = Service.objects.filter(service_type=service_type)
+    if org:
+        instances_qs = instances_qs.filter(organization=org)
+    instances = instances_qs.order_by("-date", "-start_time")[:50]
 
     if request.method == "POST" and "create_instance" in request.POST:
         instance_date = parse_date(request.POST.get("instance_date"))
@@ -424,15 +491,18 @@ def event_instances_view(request, service_type):
             if instance_date.weekday() not in allowed_days:
                 allowed_names = ", ".join([WEEKDAY_NAMES[d] for d in allowed_days])
                 messages.error(request, f"{service_type_label} instances may only be created on: {allowed_names}")
-            else:
+            elif org:
                 service = Service.objects.create(
                     date=instance_date,
                     service_type=service_type,
                     title=custom_name,
+                    organization=org,
                     created_by=request.user,
                 )
                 messages.success(request, f"Event instance created: {_get_instance_display_name(service)}")
                 return redirect("record_attendance", service_type=service_type, service_id=service.id)
+            else:
+                messages.error(request, "Your account is not associated with a church. Please contact an administrator.")
 
     context = {
         "service_type": service_type,
@@ -456,8 +526,12 @@ def record_attendance_view(request, service_type, service_id):
         messages.error(request, "Invalid event type.")
         return redirect("events")
 
+    org = _get_org(request)
     try:
-        service = Service.objects.get(pk=service_id, service_type=service_type)
+        qs = Service.objects.filter(pk=service_id, service_type=service_type)
+        if org:
+            qs = qs.filter(organization=org)
+        service = qs.get()
     except Service.DoesNotExist:
         messages.error(request, "Event instance not found.")
         return redirect("event_instances", service_type=service_type)
@@ -466,7 +540,7 @@ def record_attendance_view(request, service_type, service_id):
     service_date = service.date
 
     # Get all people for the register, sorted by hierarchy
-    people = _get_people_ordered_by_title()
+    people = _get_people_ordered_by_title(org)
 
     # Already recorded for this service
     recorded_ids = set(
@@ -545,6 +619,8 @@ def record_attendance_view(request, service_type, service_id):
                 person = form.save(commit=False)
                 person.title = Person.VISITOR
                 person.first_visit_date = service_date
+                if org:
+                    person.organization = org
                 person.save()
                 Attendance.objects.create(
                     service=service,
@@ -590,8 +666,12 @@ def event_instance_report_view(request, service_type, service_id):
         messages.error(request, "Invalid event type.")
         return redirect("events")
 
+    org = _get_org(request)
     try:
-        service = Service.objects.get(pk=service_id, service_type=service_type)
+        qs = Service.objects.filter(pk=service_id, service_type=service_type)
+        if org:
+            qs = qs.filter(organization=org)
+        service = qs.get()
     except Service.DoesNotExist:
         messages.error(request, "Event instance not found.")
         return redirect("event_instances", service_type=service_type)
@@ -648,7 +728,11 @@ def attendance_analysis_view(request, service_type, service_id):
         messages.error(request, "Invalid event type.")
         return redirect("events")
 
-    service = get_object_or_404(Service, pk=service_id, service_type=service_type)
+    org = _get_org(request)
+    filter_kwargs = {"pk": service_id, "service_type": service_type}
+    if org:
+        filter_kwargs["organization"] = org
+    service = get_object_or_404(Service, **filter_kwargs)
 
     # Attendances for this instance
     attendances = Attendance.objects.filter(service=service).select_related("person")
@@ -704,7 +788,10 @@ def attendance_analysis_view(request, service_type, service_id):
         gender_age[bucket][g] = gender_age[bucket].get(g, 0) + 1
 
     # Attendance over time for this service_type
-    instances = Service.objects.filter(service_type=service_type).order_by("date", "start_time")
+    instances_qs = Service.objects.filter(service_type=service_type)
+    if org:
+        instances_qs = instances_qs.filter(organization=org)
+    instances = instances_qs.order_by("date", "start_time")
     time_labels = []
     time_counts = []
     for inst in instances:
@@ -714,7 +801,10 @@ def attendance_analysis_view(request, service_type, service_id):
 
     # Frequency of appearance per person across all instances of this service_type
     # For each person who has ever attended this service_type, count how many instances
-    persons = Person.objects.filter(attendances__service__service_type=service_type).distinct()
+    persons_qs = Person.objects.filter(attendances__service__service_type=service_type)
+    if org:
+        persons_qs = persons_qs.filter(organization=org)
+    persons = persons_qs.distinct()
     freq_map = {}
     for p in persons:
         c = Attendance.objects.filter(person=p, service__service_type=service_type).values("service_id").distinct().count()
@@ -805,36 +895,399 @@ def set_gender(request):
     return JsonResponse({'ok': True, 'person_id': person.id, 'gender': person.gender})
 
 
-@login_required
 def dashboard_view(request):
     """
     Simple HTML dashboard using Django templates and Bootstrap.
     """
+    org = _get_org(request)
     week_start, week_end = _get_date_range_from_query_params(request)
 
     qs = Attendance.objects.filter(
         service__date__gte=week_start,
         service__date__lte=week_end,
     )
+    if org:
+        qs = qs.filter(service__organization=org)
 
-    total_attendance = qs.count()
-    visitors_count = qs.filter(category=Attendance.VISITOR).count()
-    healed_count = qs.filter(category=Attendance.HEALED).count()
+    # Find latest Sunday service
+    svc_qs = Service.objects.filter(service_type=Service.SUNDAY_SERVICE)
+    if org:
+        svc_qs = svc_qs.filter(organization=org)
+    latest_sunday_service = svc_qs.order_by('-date').first()
 
-    follow_up_count = FollowUpCase.objects.filter(
-        status__in=[FollowUpCase.STATUS_OPEN, FollowUpCase.STATUS_IN_PROGRESS],
-        created_at__date__lte=week_end,
-    ).count()
+    # People who missed the latest Sunday service
+    missed_latest_sunday = []
+    urgent_count = concern_count = normal_count = 0
+    if latest_sunday_service:
+        # Get all members (excluding visitors) with optimized query
+        all_members = Person.objects.filter(
+            Q(title__in=[Person.BROTHER, Person.SISTER, Person.PROPHET, Person.GENERAL_OVERSEER, 
+                              Person.SENIOR_ARCHBISHOP_EMERITUS, Person.SENIOR_ARCHBISHOP, 
+                              Person.SENIOR_DEPUTY_ARCHBISHOP, Person.DEPUTY_ARCHBISHOP, 
+                              Person.BISHOP, Person.OVERSEER, Person.SENIOR_PASTOR, Person.PASTOR])
+        ).exclude(title=Person.VISITOR)
+        if org:
+            all_members = all_members.filter(organization=org)
 
-    # For the simplified dashboard we only surface counts; charts removed.
+        # Get people who attended the latest Sunday service
+        attended_latest_sunday = Attendance.objects.filter(
+            service=latest_sunday_service
+        ).values_list('person_id', flat=True)
+
+        # People who missed the latest Sunday service
+        missed_people = all_members.exclude(id__in=attended_latest_sunday)
+
+        # Get people who already have completed follow-ups for this service
+        from followup.models import FollowUpRecord
+        completed_followup_people = FollowUpRecord.objects.filter(
+            service=latest_sunday_service,
+            is_completed=True
+        ).values_list('person_id', flat=True)
+        
+        # Filter out people who already have completed follow-ups
+        missed_people = missed_people.exclude(id__in=completed_followup_people)
+
+        # Early exit: if no one missed, skip complex calculations
+        if not missed_people.exists():
+            missed_latest_sunday = []
+            urgent_count = concern_count = normal_count = 0
+        else:
+            # OPTIMIZATION: Get all Sunday services in the last 12 weeks for bulk processing
+            twelve_weeks_ago = latest_sunday_service.date - timedelta(weeks=12)
+            recent_sunday_services = Service.objects.filter(
+                date__gte=twelve_weeks_ago,
+                service_type=Service.SUNDAY_SERVICE
+            )
+            if org:
+                recent_sunday_services = recent_sunday_services.filter(organization=org)
+            recent_sunday_services = recent_sunday_services.order_by('-date')
+
+            # Get all attendance records for these Sunday services in one query
+            recent_attendance = Attendance.objects.filter(
+                service__in=recent_sunday_services,
+                person__in=missed_people
+            ).select_related('person', 'service').order_by('-service__date', 'person__full_name')
+
+            # Build a lookup dictionary for quick access
+            attendance_lookup = {}
+            for att in recent_attendance:
+                if att.person_id not in attendance_lookup:
+                    attendance_lookup[att.person_id] = []
+                attendance_lookup[att.person_id].append(att)
+
+            # Calculate consecutive Sundays missed using the pre-fetched data
+            # Limit to first 50 people for performance if there are many
+            missed_people_list = list(missed_people[:50])
+            
+            for person in missed_people_list:
+                consecutive_missed = _calculate_consecutive_sundays_missed_optimized(
+                    person, 
+                    latest_sunday_service.date, 
+                    recent_sunday_services,
+                    attendance_lookup.get(person.id, [])
+                )
+                missed_latest_sunday.append({
+                    'person': person,
+                    'consecutive_missed': consecutive_missed
+                })
+
+            # Sort by consecutive missed (highest to lowest) then by name
+            missed_latest_sunday.sort(key=lambda x: (-x['consecutive_missed'], x['person'].full_name))
+
+            # Calculate statistics for the summary boxes
+            urgent_count = sum(1 for item in missed_latest_sunday if item['consecutive_missed'] >= 4)
+            concern_count = sum(1 for item in missed_latest_sunday if 2 <= item['consecutive_missed'] <= 3)
+            normal_count = sum(1 for item in missed_latest_sunday if item['consecutive_missed'] <= 1)
+
+    # Simplified context with only Sunday service absence tracking
     context = {
-        "week_start": week_start,
-        "week_end": week_end,
-        "total_attendance": total_attendance,
-        "visitors_count": visitors_count,
-        "healed_count": healed_count,
-        "follow_up_count": follow_up_count,
+        "latest_sunday_service": latest_sunday_service,
+        "missed_latest_sunday": missed_latest_sunday,
+        "missed_count": len(missed_latest_sunday),
+        "urgent_count": urgent_count,
+        "concern_count": concern_count,
+        "normal_count": normal_count,
     }
 
     return render(request, "dashboard.html", context)
+
+
+def _calculate_consecutive_sundays_missed_optimized(person, as_of_date, sunday_services, person_attendance):
+    """
+    Optimized version that uses pre-fetched data instead of database queries.
+    """
+    consecutive_missed = 0
+    
+    # Build a set of attended service dates for quick lookup
+    attended_dates = {att.service.date for att in person_attendance}
+    
+    # Check backwards through the Sunday services
+    for service in sunday_services:
+        if service.date > as_of_date:
+            continue  # Skip services after the reference date
+            
+        if service.date in attended_dates:
+            break  # Stop counting if they attended this Sunday
+        else:
+            consecutive_missed += 1
+    
+    return consecutive_missed
+
+
+def _calculate_consecutive_sundays_missed(person, as_of_date):
+    """
+    Calculate how many consecutive Sunday services a person has missed up to as_of_date.
+    """
+    consecutive_missed = 0
+    
+    # Find the most recent Sunday on or before as_of_date
+    if as_of_date.weekday() == 6:  # If as_of_date is Sunday
+        current_date = as_of_date
+    else:
+        # Find the previous Sunday
+        days_since_sunday = as_of_date.weekday() + 1  # Monday=1, Sunday=7 -> Sunday=0
+        current_date = as_of_date - timedelta(days=days_since_sunday)
+    
+    # Check backwards from the most recent Sunday
+    while consecutive_missed <= 52:  # Safety check: max 1 year
+        # Check if there was a Sunday service on this date
+        sunday_service = Service.objects.filter(
+            date=current_date,
+            service_type=Service.SUNDAY_SERVICE
+        ).first()
+        
+        if sunday_service:
+            # Check if person attended this Sunday service
+            attended = Attendance.objects.filter(
+                service=sunday_service,
+                person=person
+            ).exists()
+            
+            if attended:
+                break  # Stop counting if they attended
+            else:
+                consecutive_missed += 1
+        
+        # Move to previous Sunday
+        current_date = current_date - timedelta(days=7)
+    
+    return consecutive_missed
+
+
+class EventInstanceReportTextView(APIView):
+    """
+    Generate a comprehensive WhatsApp-ready text report for a specific event instance.
+    
+    Query params:
+    - service_id: integer (required)
+    - service_type: string (required)
+    
+    Returns a detailed text report including:
+    - Event details and summary statistics
+    - Attendee breakdown by category and demographics
+    - Notable attendees by church hierarchy
+    - First-time visitors and healed individuals
+    - Fellowship group representation
+    - Age and gender analysis
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        service_id = request.query_params.get('service_id')
+        service_type = request.query_params.get('service_type')
+        
+        if not service_id or not service_type:
+            return Response(
+                {"error": "Both service_id and service_type parameters are required"},
+                status=400
+            )
+        
+        try:
+            service = Service.objects.get(pk=service_id, service_type=service_type)
+        except Service.DoesNotExist:
+            return Response(
+                {"error": "Event instance not found"},
+                status=404
+            )
+        
+        # Get all attendance records for this service
+        attendances = (
+            Attendance.objects.filter(service=service)
+            .select_related("person")
+            .order_by("person__full_name")
+        )
+        
+        # Basic statistics
+        total_attendance = attendances.count()
+        members_count = attendances.filter(category=Attendance.MEMBER).count()
+        visitors_count = attendances.filter(category=Attendance.VISITOR).count()
+        healed_count = attendances.filter(category=Attendance.HEALED).count()
+        first_time_visitors = attendances.filter(is_first_time_visitor=True).count()
+        
+        # Gender breakdown
+        male_count = attendances.filter(person__gender=Person.MALE).count()
+        female_count = attendances.filter(person__gender=Person.FEMALE).count()
+        
+        # Age group breakdown
+        age_0_12 = attendances.filter(
+            person__date_of_birth__lte=date.today().replace(year=date.today().year - 12),
+            person__date_of_birth__gte=date.today().replace(year=date.today().year - 12)
+        ).count() if attendances.filter(person__date_of_birth__isnull=False).exists() else 0
+        
+        age_13_19 = attendances.filter(
+            person__date_of_birth__lte=date.today().replace(year=date.today().year - 13),
+            person__date_of_birth__gte=date.today().replace(year=date.today().year - 19)
+        ).count() if attendances.filter(person__date_of_birth__isnull=False).exists() else 0
+        
+        age_20_35 = attendances.filter(
+            person__date_of_birth__lte=date.today().replace(year=date.today().year - 20),
+            person__date_of_birth__gte=date.today().replace(year=date.today().year - 35)
+        ).count() if attendances.filter(person__date_of_birth__isnull=False).exists() else 0
+        
+        age_36_plus = attendances.filter(
+            person__date_of_birth__lte=date.today().replace(year=date.today().year - 36)
+        ).count() if attendances.filter(person__date_of_birth__isnull=False).exists() else 0
+        
+        # Fellowship groups
+        fellowship_counts = {}
+        for fellowship_choice, fellowship_label in Person.FELLOWSHIP_CHOICES:
+            if fellowship_choice != Person.NONE:
+                count = attendances.filter(person__fellowship=fellowship_choice).count()
+                if count > 0:
+                    fellowship_counts[fellowship_label] = count
+        
+        # Notable attendees by hierarchy
+        leadership_titles = [
+            Person.PROPHET, Person.GENERAL_OVERSEER, Person.SENIOR_ARCHBISHOP_EMERITUS,
+            Person.SENIOR_ARCHBISHOP, Person.SENIOR_DEPUTY_ARCHBISHOP, Person.DEPUTY_ARCHBISHOP,
+            Person.BISHOP, Person.OVERSEER, Person.SENIOR_PASTOR, Person.PASTOR
+        ]
+        
+        leadership_attendees = attendances.filter(person__title__in=leadership_titles).order_by("person__title", "person__full_name")
+        
+        # First-time visitors list
+        first_time_visitor_list = attendances.filter(is_first_time_visitor=True).select_related("person")
+        
+        # Healed individuals list
+        healed_individuals = attendances.filter(is_healed_this_service=True).select_related("person")
+        
+        # Build the report message
+        message_lines = []
+        
+        # Header
+        message_lines.append("📊 EVENT INSTANCE REPORT")
+        message_lines.append("=" * 30)
+        message_lines.append(f"📅 Date: {service.date}")
+        message_lines.append(f"🙏 Service: {dict(Service.SERVICE_TYPE_CHOICES).get(service.service_type, service.service_type)}")
+        if service.title:
+            message_lines.append(f"📝 Title: {service.title}")
+        if service.location:
+            message_lines.append(f"📍 Location: {service.location}")
+        message_lines.append("")
+        
+        # Summary Statistics
+        message_lines.append("📈 SUMMARY STATISTICS")
+        message_lines.append("-" * 20)
+        message_lines.append(f"👥 Total Attendance: {total_attendance}")
+        message_lines.append(f"🏠 Members: {members_count}")
+        message_lines.append(f"👋 Visitors: {visitors_count}")
+        message_lines.append(f"✝️  Healed of the LORD: {healed_count}")
+        message_lines.append(f"🆕 First-time Visitors: {first_time_visitors}")
+        message_lines.append("")
+        
+        # Demographics
+        message_lines.append("👨‍👩‍👧‍👦 DEMOGRAPHICS")
+        message_lines.append("-" * 15)
+        message_lines.append(f"👨 Male: {male_count}")
+        message_lines.append(f"👩 Female: {female_count}")
+        message_lines.append("")
+        message_lines.append("🎂 AGE GROUPS")
+        message_lines.append("-" * 12)
+        message_lines.append(f"👶 Children (0-12): {age_0_12}")
+        message_lines.append(f"🧒 Youth (13-19): {age_13_19}")
+        message_lines.append(f"🧑 Young Adults (20-35): {age_20_35}")
+        message_lines.append(f"👴 Adults (36+): {age_36_plus}")
+        message_lines.append("")
+        
+        # Fellowship Groups
+        if fellowship_counts:
+            message_lines.append("🤝 FELLOWSHIP GROUPS")
+            message_lines.append("-" * 20)
+            for fellowship, count in sorted(fellowship_counts.items(), key=lambda x: x[1], reverse=True):
+                message_lines.append(f"🏘️ {fellowship}: {count}")
+            message_lines.append("")
+        
+        # Leadership Attendance
+        if leadership_attendees.exists():
+            message_lines.append("👑 LEADERSHIP PRESENT")
+            message_lines.append("-" * 20)
+            for attendance in leadership_attendees:
+                title_display = attendance.person.get_title_display()
+                message_lines.append(f"👔 {title_display} {attendance.person.full_name}")
+            message_lines.append("")
+        
+        # First-time Visitors
+        if first_time_visitor_list.exists():
+            message_lines.append("🆕 FIRST-TIME VISITORS")
+            message_lines.append("-" * 22)
+            for attendance in first_time_visitor_list:
+                message_lines.append(f"👋 {attendance.person.full_name}")
+                if attendance.person.phone:
+                    message_lines.append(f"   📱 {attendance.person.phone}")
+            message_lines.append("")
+        
+        # Healed Individuals
+        if healed_individuals.exists():
+            message_lines.append("✨ HEALED INDIVIDUALS")
+            message_lines.append("-" * 23)
+            for attendance in healed_individuals:
+                message_lines.append(f"🙌 {attendance.person.full_name}")
+                if attendance.notes:
+                    message_lines.append(f"   💬 {attendance.notes}")
+            message_lines.append("")
+        
+        # Service Notes
+        if service.notes:
+            message_lines.append("📋 SERVICE NOTES")
+            message_lines.append("-" * 16)
+            message_lines.append(service.notes)
+            message_lines.append("")
+        
+        # Footer
+        message_lines.append("📱 Generated by Church Attendance System")
+        message_lines.append(f"⏰ {date.today().strftime('%Y-%m-%d %H:%M')}")
+        
+        return Response({
+            "service_id": service_id,
+            "service_type": service_type,
+            "service_date": service.date,
+            "service_title": service.title,
+            "total_attendance": total_attendance,
+            "members_count": members_count,
+            "visitors_count": visitors_count,
+            "healed_count": healed_count,
+            "first_time_visitors": first_time_visitors,
+            "male_count": male_count,
+            "female_count": female_count,
+            "age_0_12": age_0_12,
+            "age_13_19": age_13_19,
+            "age_20_35": age_20_35,
+            "age_36_plus": age_36_plus,
+            "fellowship_counts": fellowship_counts,
+            "leadership_present": [
+                f"{att.person.get_title_display()} {att.person.full_name}" 
+                for att in leadership_attendees
+            ],
+            "first_time_visitor_list": [
+                f"{att.person.full_name} ({att.person.phone})" 
+                for att in first_time_visitor_list if att.person.phone
+            ],
+            "healed_individuals": [
+                f"{att.person.full_name}: {att.notes}" 
+                for att in healed_individuals if att.notes
+            ],
+            "message": "\n".join(message_lines),
+            "message_length": len("\n".join(message_lines))
+        })
 

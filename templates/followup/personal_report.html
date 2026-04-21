@@ -1,0 +1,260 @@
+{% extends "base.html" %}
+
+{% block title %}{{ person.full_name }} - Personal Report{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h1 class="h3">
+            {{ person.full_name }} - Personal Report
+            <small class="text-muted">({{ person.get_title_display }})</small>
+        </h1>
+    </div>
+    <div class="col-auto">
+        <form method="get" class="d-flex align-items-center">
+            <label for="service-type-filter" class="form-label me-2 mb-0">Filter:</label>
+            <select id="service-type-filter" name="service_type" class="form-select form-select-sm me-2" onchange="this.form.submit()">
+                {% for value, label in service_type_choices %}
+                <option value="{{ value }}" {% if value == service_type_filter %}selected{% endif %}>
+                    {{ label }}
+                </option>
+                {% endfor %}
+            </select>
+        </form>
+    </div>
+</div>
+
+<!-- Personal Information -->
+<div class="row mb-4">
+    <div class="col-md-8">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <h5 class="card-title">👤 Personal Information</h5>
+                <div class="row">
+                    <div class="col-md-6">
+                        <p><strong>Full Name:</strong> {{ person.full_name }}</p>
+                        <p><strong>Title:</strong> {{ person.get_title_display }}</p>
+                        <p><strong>Age:</strong> {% if person.age %}{{ person.age }} years{% else %}Not specified{% endif %}</p>
+                        <p><strong>Gender:</strong> {{ person.get_gender_display|default:"Not specified" }}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <p><strong>Phone:</strong> 
+                            {% if person.phone %}
+                                <a href="tel:{{ person.phone }}" class="text-decoration-none">📱 {{ person.phone }}</a>
+                            {% else %}
+                                <span class="text-muted">Not specified</span>
+                            {% endif %}
+                        </p>
+                        <p><strong>Email:</strong> 
+                            {% if person.email %}
+                                <a href="mailto:{{ person.email }}" class="text-decoration-none">✉️ {{ person.email }}</a>
+                            {% else %}
+                                <span class="text-muted">Not specified</span>
+                            {% endif %}
+                        </p>
+                        <p><strong>Fellowship:</strong> {{ person.get_fellowship_display|default:"Not specified" }}</p>
+                        <p><strong>Residence:</strong> {{ person.residence|default:"Not specified" }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <h5 class="card-title">📊 Quick Stats</h5>
+                <div class="mb-2">
+                    <div class="d-flex justify-content-between">
+                        <span>Attendance Rate:</span>
+                        <strong>{{ stats.attendance_rate }}%</strong>
+                    </div>
+                    <div class="progress" style="height: 8px;">
+                        <div class="progress-bar" style="width: {{ stats.attendance_rate }}%"></div>
+                    </div>
+                </div>
+                <p><strong>Total Services:</strong> {{ stats.total_services }}</p>
+                <p><strong>Services Attended:</strong> {{ stats.attended_services }}</p>
+                <p><strong>Follow-up Success:</strong> {{ stats.followup_success_rate }}%</p>
+                <p><strong>Current Absence Streak:</strong> {{ stats.consecutive_absences }} services</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Attendance Timeline -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <h5 class="card-title">
+                    📅 Service Attendance & Follow-up Timeline
+                    {% if service_type_filter != 'all' %}
+                        <small class="text-muted">({{ current_filter_label }})</small>
+                    {% endif %}
+                </h5>
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Service Type</th>
+                                <th>Attended</th>
+                                <th>Attendance Details</th>
+                                <th>Follow-up Status</th>
+                                <th>Follow-up Notes</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in service_timeline %}
+                            <tr class="{% if not item.attended %}table-warning{% endif %}">
+                                <td>{{ item.date|date:"M d, Y" }}</td>
+                                <td>
+                                    <span class="badge bg-light text-dark">{{ item.service.get_service_type_display }}</span>
+                                </td>
+                                <td>
+                                    {% if item.attended %}
+                                        <span class="badge bg-success">✅ Yes</span>
+                                    {% else %}
+                                        <span class="badge bg-danger">❌ No</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if item.attendance %}
+                                        Category: {{ item.attendance.get_category_display }}<br>
+                                        {% if item.attendance.notes %}Notes: {{ item.attendance.notes }}{% endif %}
+                                    {% else %}
+                                        <span class="text-muted">—</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if item.followup %}
+                                        <span class="badge {% if item.followup.is_completed %}bg-success{% else %}bg-warning{% endif %}">
+                                            {{ item.followup.get_method_display }}
+                                        </span>
+                                        {% if item.followup.contacted_by %}
+                                            <small class="text-muted d-block">by {{ item.followup.contacted_by.get_full_name|default:item.followup.contacted_by.username }}</small>
+                                        {% endif %}
+                                    {% else %}
+                                        {% if not item.attended %}
+                                            <span class="badge bg-secondary">No follow-up</span>
+                                        {% else %}
+                                            <span class="text-muted">—</span>
+                                        {% endif %}
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if item.followup %}
+                                        {% if item.followup.comments %}{{ item.followup.comments }}{% endif %}
+                                        {% if item.followup.response_notes %}
+                                            <br><small class="text-info"><strong>Response:</strong> {{ item.followup.response_notes }}</small>
+                                        {% endif %}
+                                    {% else %}
+                                        <span class="text-muted">—</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Follow-up Cases -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <h5 class="card-title">📞 Follow-up Cases</h5>
+                {% if followup_cases %}
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Created</th>
+                                <th>Reason</th>
+                                <th>Status</th>
+                                <th>Assigned To</th>
+                                <th>Description</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for case in followup_cases %}
+                            <tr>
+                                <td>{{ case.created_at|date:"M d, Y" }}</td>
+                                <td>{{ case.get_reason_display }}</td>
+                                <td>
+                                    <span class="badge {% if case.status == 'resolved' %}bg-success{% elif case.status == 'in_progress' %}bg-warning{% else %}bg-secondary{% endif %}">
+                                        {{ case.get_status_display }}
+                                    </span>
+                                </td>
+                                <td>
+                                    {% if case.assigned_to %}
+                                        {{ case.assigned_to.get_full_name|default:case.assigned_to.username }}
+                                    {% else %}
+                                        <span class="text-muted">Unassigned</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ case.description|default:"—" }}</td>
+                                <td>
+                                    <a href="#" class="btn btn-sm btn-outline-primary">View Details</a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="alert alert-info">
+                    ℹ️ No follow-up cases found for this person.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Attendance by Type -->
+<div class="row">
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <h5 class="card-title">📈 Attendance by Service Type</h5>
+                {% if stats.attendance_by_type %}
+                {% for item in stats.attendance_by_type %}
+                <div class="d-flex justify-content-between mb-2">
+                    <span>{{ item.service__service_type|title }}</span>
+                    <strong>{{ item.count }} services</strong>
+                </div>
+                {% endfor %}
+                {% else %}
+                <p class="text-muted">No attendance data available.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <h5 class="card-title">📊 Follow-up Summary</h5>
+                <div class="mb-2">
+                    <div class="d-flex justify-content-between">
+                        <span>Success Rate:</span>
+                        <strong>{{ stats.followup_success_rate }}%</strong>
+                    </div>
+                    <div class="progress" style="height: 8px;">
+                        <div class="progress-bar bg-success" style="width: {{ stats.followup_success_rate }}%"></div>
+                    </div>
+                </div>
+                <p><strong>Total Follow-ups:</strong> {{ stats.total_followups }}</p>
+                <p><strong>Successful:</strong> {{ stats.successful_followups }}</p>
+                <p><strong>Pending:</strong> {{ stats.total_followups|add:"-"|add:stats.successful_followups }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

@@ -9,41 +9,265 @@
     </div>
 </div>
 
-<div class="row">
+{% if latest_sunday_service and missed_latest_sunday %}
+<div class="row mt-4">
     <div class="col-12">
         <div class="card border-0 shadow-sm">
             <div class="card-body">
-                <h2 class="h5 mb-3">Summary (last 7 days)</h2>
-                <div class="row">
-                    <div class="col-md-3">
-                        <div class="p-3 bg-light rounded">
-                            <div class="small text-muted">Total attendance</div>
-                            <div class="h4">{{ total_attendance }}</div>
-                        </div>
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h2 class="h5 mb-0">
+                        👥 People to be Followed Up On 
+                        <small class="text-muted">({{ latest_sunday_service.date }})</small>
+                    </h2>
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="badge bg-warning">{{ missed_count }} member{{ missed_count|pluralize }}</span>
+                        <button id="save-followups-top" class="btn btn-primary btn-sm">
+                            💾 Save and Refresh
+                        </button>
                     </div>
-                    <div class="col-md-3">
-                        <div class="p-3 bg-light rounded">
-                            <div class="small text-muted">Visitors</div>
-                            <div class="h4">{{ visitors_count }}</div>
+                </div>
+                
+                {% if missed_latest_sunday %}
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Title</th>
+                                <th>Consecutive Sundays Missed</th>
+                                <th>Contact</th>
+                                <th>Fellowship</th>
+                                <th>Follow-up</th>
+                                <th>Comments</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in missed_latest_sunday %}
+                            <tr class="{% if item.consecutive_missed >= 4 %}table-danger{% elif item.consecutive_missed >= 2 %}table-warning{% endif %}">
+                                <td>
+                                    <a href="{% url 'personal-report' item.person.id %}" class="text-decoration-none">
+                                        <strong>{{ item.person.full_name }}</strong>
+                                    </a>
+                                    {% if item.person.age %}
+                                        <small class="text-muted">({{ item.person.age }} yrs)</small>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <span class="badge bg-secondary">{{ item.person.get_title_display }}</span>
+                                </td>
+                                <td>
+                                    <span class="badge {% if item.consecutive_missed >= 4 %}bg-danger{% elif item.consecutive_missed >= 2 %}bg-warning{% else %}bg-info{% endif %}">
+                                        {{ item.consecutive_missed }}
+                                    </span>
+                                    {% if item.consecutive_missed == 1 %}
+                                        <small class="text-muted">week</small>
+                                    {% else %}
+                                        <small class="text-muted">weeks</small>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if item.person.phone %}
+                                        <a href="tel:{{ item.person.phone }}" class="text-decoration-none">
+                                            📱 {{ item.person.phone }}
+                                        </a>
+                                    {% else %}
+                                        <span class="text-muted">—</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if item.person.fellowship != 'none' %}
+                                        <span class="badge bg-light text-dark">{{ item.person.get_fellowship_display }}</span>
+                                    {% else %}
+                                        <span class="text-muted">—</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div class="form-check">
+                                        <input class="form-check-input follow-up-checkbox" type="checkbox" 
+                                               id="followup_{{ item.person.id }}" 
+                                               data-person-id="{{ item.person.id }}"
+                                               data-service-id="{{ latest_sunday_service.id }}"
+                                               data-person-name="{{ item.person.full_name }}">
+                                        <label class="form-check-label" for="followup_{{ item.person.id }}">
+                                            Contacted
+                                        </label>
+                                    </div>
+                                </td>
+                                <td>
+                                    <textarea class="form-control form-control-sm follow-up-comment" 
+                                              id="comment_{{ item.person.id }}" 
+                                              data-person-id="{{ item.person.id }}"
+                                              rows="2" 
+                                              placeholder="Add follow-up notes..."></textarea>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div class="mt-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="p-2 bg-danger bg-opacity-10 rounded text-center">
+                                    <strong class="text-danger">{{ urgent_count }}</strong>
+                                    <div class="small">4+ weeks (urgent)</div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="p-2 bg-warning bg-opacity-10 rounded text-center">
+                                    <strong class="text-warning">{{ concern_count }}</strong>
+                                    <div class="small">2-3 weeks (concern)</div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="p-2 bg-info bg-opacity-10 rounded text-center">
+                                    <strong class="text-info">{{ normal_count }}</strong>
+                                    <div class="small">0-1 weeks (normal)</div>
+                                </div>
+                            </div>
                         </div>
+                        <button id="save-followups" class="btn btn-primary">
+                            💾 Save Follow-ups
+                        </button>
                     </div>
-                    <div class="col-md-3">
-                        <div class="p-3 bg-light rounded">
-                            <div class="small text-muted">Healed</div>
-                            <div class="h4">{{ healed_count }}</div>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="p-3 bg-light rounded">
-                            <div class="small text-muted">Open follow-ups</div>
-                            <div class="h4">{{ follow_up_count }}</div>
-                        </div>
-                    </div>
+                </div>
+                {% else %}
+                <div class="alert alert-success">
+                    ✅ All members attended the latest Sunday service!
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="alert alert-info">
+                    ✅ All absent members have been followed up for the latest Sunday service!
+                    <br><small class="text-muted">({{ latest_sunday_service.date }})</small>
                 </div>
             </div>
         </div>
     </div>
 </div>
+{% endif %}
 
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+// Function to save follow-ups (shared by both buttons)
+function saveFollowUps() {
+    const followups = [];
+    
+    // Collect all follow-up data
+    document.querySelectorAll('.follow-up-checkbox').forEach(checkbox => {
+        const personId = checkbox.dataset.personId;
+        const serviceId = checkbox.dataset.serviceId;
+        const personName = checkbox.dataset.personName;
+        const comment = document.getElementById(`comment_${personId}`).value;
+        
+        if (checkbox.checked || comment.trim()) {
+            followups.push({
+                person_id: personId,
+                service_id: serviceId,
+                person_name: personName,
+                is_completed: checkbox.checked,
+                comments: comment.trim()
+            });
+        }
+    });
+    
+    if (followups.length === 0) {
+        alert('Please check at least one person or add comments before saving.');
+        return;
+    }
+    
+    // Show loading state on both buttons
+    document.querySelectorAll('#save-followups, #save-followups-top').forEach(btn => {
+        btn.disabled = true;
+        btn.innerHTML = '⏳ Saving...';
+    });
+    
+    // Send data to server
+    fetch('/api/followup/batch-create/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify({ followups: followups })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Show success message
+            const successCount = data.created_count;
+            const message = document.createElement('div');
+            message.className = 'alert alert-success alert-dismissible fade show';
+            message.innerHTML = `
+                ✅ Successfully saved ${successCount} follow-up record${successCount > 1 ? 's' : ''}!
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            
+            // Insert message at top of card
+            const cardBody = document.querySelector('.card-body');
+            cardBody.insertBefore(message, cardBody.firstChild);
+            
+            // Clear form fields
+            document.querySelectorAll('.follow-up-checkbox').forEach(cb => cb.checked = false);
+            document.querySelectorAll('.follow-up-comment').forEach(ta => ta.value = '');
+            
+            // Remove message after 3 seconds and refresh page
+            setTimeout(() => {
+                if (message.parentNode) {
+                    message.remove();
+                }
+                // Refresh page to show updated data
+                location.reload();
+            }, 3000);
+            
+        } else {
+            throw new Error(data.error || 'Failed to save follow-ups');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to save follow-ups. Please try again.');
+    })
+    .finally(() => {
+        // Restore button state for both buttons
+        document.querySelectorAll('#save-followups, #save-followups-top').forEach(btn => {
+            btn.disabled = false;
+            btn.innerHTML = '💾 Save Follow-ups';
+        });
+    });
+}
+
+// Add event listeners to both buttons
+document.getElementById('save-followups')?.addEventListener('click', saveFollowUps);
+document.getElementById('save-followups-top')?.addEventListener('click', saveFollowUps);
+
+// Helper function to get CSRF token
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+</script>
 {% endblock %}
 
