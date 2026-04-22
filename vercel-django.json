@@ -2,17 +2,17 @@
   "version": 2,
   "builds": [
     {
-      "src": "vercel_wsgi.py",
+      "src": "config/wsgi.py",
       "use": "@vercel/python"
     }
   ],
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "vercel_wsgi.py"
+      "dest": "config/wsgi.py"
     }
   ],
   "env": {
-    "DJANGO_SETTINGS_MODULE": "vercel_production"
+    "DJANGO_SETTINGS_MODULE": "config.settings"
   }
 }
