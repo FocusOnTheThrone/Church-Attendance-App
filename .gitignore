@@ -56,3 +56,6 @@ secret_key.txt
 *.pem
 *.key
 *.crt
+
+.vercel
+.env*.local
